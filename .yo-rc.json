@@ -1,0 +1,10 @@
+{
+  "generator-nodejs-lib": {
+    "projectNamespace": "@vamship",
+    "projectName": "aws-dynamodb",
+    "projectDescription": "Library that provides easy abstractions to perform common operations on AWS DynamoDB",
+    "authorName": "Vamshi K Ponnapalli",
+    "authorEmail": "vamshi.ponnapalli@gmail.com",
+    "githubUsername": "vamship"
+  }
+}
