@@ -371,7 +371,7 @@ class Entity {
 
         logger.trace('Augmenting input payload');
         const payload = Object.assign({}, props, {
-            __deleted: 'no',
+            __status: 'active',
             __version: _shortId.generate(),
             __createdBy: username,
             __createDate: Date.now(),
@@ -424,7 +424,7 @@ class Entity {
         if (typeof rangeKey !== 'undefined') {
             client = client.where(this.rangeKeyName).eq(rangeKey);
         }
-        client = client.if('__deleted').eq('no');
+        client = client.if('__status').eq('active');
 
         logger.trace('Looking up entity record');
         const action = Promise.promisify(client.get.bind(client));
@@ -473,7 +473,7 @@ class Entity {
 
         logger.trace('Adding query conditions');
         client = client.where(this.hashKeyName).eq(hashKey);
-        client = client.having('__deleted').eq('no');
+        client = client.having('__status').eq('active');
         if (typeof rangeKey !== 'undefined') {
             logger.trace('Adding resume token');
             client = client.resume({
@@ -559,7 +559,7 @@ class Entity {
             if (typeof rangeKey !== 'undefined') {
                 client = client.where(this.rangeKeyName).eq(rangeKey);
             }
-            client = client.if('__deleted').eq('no');
+            client = client.if('__status').eq('active');
             client = client.if('__version').eq(version);
             client = client.return(client.ALL_OLD);
 
@@ -602,15 +602,58 @@ class Entity {
     }
 
     /**
-     * Deletes an existing entity from the dynamodb table.
+     * Deletes an existing entity from the dynamodb table. This operation
+     * results in a hard delete, resulting in the removal of the record from the
+     * table. If a logical delete is desiired, the
+     * [update()]{@link Entity#update} method should be used, with the
+     * '__status' field set to 'deleted'.
      *
      * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
+     * @param {String} version A value that is used to perform optimistic
+     *        locking for concurrent writes.
+     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     *        query.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
      *         outcome of the create operation.
      */
-    delete(keys) {}
+    delete(keys, version, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+        _argValidator.checkString(version, 1, 'Invalid version (arg #4)');
+
+        const hashKey = this._getHashKey(keys);
+        const rangeKey = this._getRangeKey(keys);
+        const username = this._getUsername(audit);
+        const logger = this._logger.child({
+            operation: 'delete',
+            username,
+            hashKey,
+            rangeKey
+        });
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient();
+
+        logger.trace('Adding query conditions');
+        client = client.where(this.hashKeyName).eq(hashKey);
+        if (typeof rangeKey !== 'undefined') {
+            client = client.where(this.rangeKeyName).eq(rangeKey);
+        }
+        client = client.if('__status').eq('active');
+        client = client.if('__version').eq(version);
+
+        logger.trace('Deleting entity record');
+        const action = Promise.promisify(client.delete.bind(client));
+        return Entity._execQuery(action, logger).then(undefined, (error) => {
+            if (error.code === 'ConditionalCheckFailedException') {
+                logger.error('Conditional check failed on delete');
+                throw new ConcurrencyControlError();
+            } else {
+                throw error;
+            }
+        });
+    }
 }
 
 module.exports = Entity;
