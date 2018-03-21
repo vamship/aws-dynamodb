@@ -6,6 +6,7 @@ _chai.use(require('sinon-chai'));
 _chai.use(require('chai-as-promised'));
 const expect = _chai.expect;
 
+const _awsSdk = require('aws-sdk');
 const Promise = require('bluebird').Promise;
 const _rewire = require('rewire');
 const SelectiveCopy = require('selective-copy');
@@ -231,6 +232,7 @@ describe('Entity', () => {
             return _awsSdkMock._dynamoDbRef;
         });
         _awsSdkMock._dynamoDbRef = new ObjectMock();
+        _awsSdkMock.instance.DynamoDB.Converter = _awsSdk.DynamoDB.Converter;
 
         _dynamoDbMock = new ObjectMock()
             .addMock('table', () => _dynamoDbMock.instance)
@@ -764,6 +766,46 @@ describe('Entity', () => {
                 entity.list(keys, count);
 
                 expect(resumeClause.stub).to.not.have.been.called;
+            });
+
+            it('should create the resume clause with the correct data types based on key values', () => {
+                const inputs = [
+                    {
+                        accountId: _testValues.getString('accountId'),
+                        entityId: _testValues.getString('entityId')
+                    },
+                    {
+                        accountId: _testValues.getNumber(),
+                        entityId: _testValues.getString('entityId')
+                    },
+                    {
+                        accountId: _testValues.getString('accountId'),
+                        entityId: _testValues.getNumber()
+                    },
+                    {
+                        accountId: _testValues.getNumber(),
+                        entityId: _testValues.getNumber()
+                    }
+                ];
+
+                inputs.forEach((keys) => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    const count = 10;
+                    const expected = _awsSdk.DynamoDB.Converter.input(keys).M;
+
+                    const resumeClause = _dynamoDbMock.mocks.resume;
+
+                    expect(resumeClause.stub).to.not.have.been.called;
+
+                    entity.list(keys, count);
+
+                    expect(resumeClause.stub).to.have.been.calledOnce;
+
+                    const resumeToken = resumeClause.stub.args[0][0];
+                    expect(resumeToken).to.deep.equal(expected);
+
+                    resumeClause.reset();
+                });
             });
 
             it('should not include the limit clause if the count value is undefined', () => {

@@ -40,7 +40,7 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  */
 /**
  * @external {DynamoDbClient}
- * @see {@link https://github.com/vamship/error-types}
+ * @see {@link https://http://awspilot.github.io/dynamodb-oop}
  */
 /**
  * Abstract representation of a single DynamoDB table, providing methods for
@@ -84,21 +84,58 @@ class Entity {
      *           for more information.
      */
     /**
-     * A set of keys that uniquely identify the entity record in the table.
+     * A set of keys that uniquely identify the entity record in the table. This
+     * object can define two properties:
+     * <ul>
+     * <li>
+     * <b>hashKeyName</b>: This property must have the same name as the value of
+     * [hashKeyName]{@link Entity#hashKeyName}
+     * </li>
+     * <li>
+     * <b>rangeKeyName</b>: This property must have the same name as the value
+     * of [rangeKeyName]{@link Entity#rangeKeyName}. The range key name property
+     * can be undefined, depending on the type of query to be performed, and/or
+     * the configuration of the entity object.
+     * </li>
+     * </ul>
+     *
+     * <p>
+     * The values of these properties can be either numbers or strings.
+     * </p>
+     *
+     * @example
+     * // Assume that the entity has a hash key named "accountId" of type
+     * // string, and a range key named "entityId" of type number.
+     *
+     * const keys = {
+     *  accountId: 'myAccount',
+     *  entityId: 1001
+     * };
      *
      * @typedef {Object} Entity.Keys
-     * @property {String} hashKey The partition key for the entity record.
-     * @property {String} [rangeKey=undefined] A range key that for to identify
-     *           the record. If omitted, no range key will be used for queries.
      */
     /**
      * Audit information for entity operations.
      *
      * @typedef {Object} Entity.Audit
-     * @property {String} [username=] The username to associate with an entity
-     *           in the audit log fields. If omitted, this value will default
-     *           to the username specified via {@link Entity.Options},
+     * @property {String} [username='SYSTEM'] The username to associate with an
+     *           entity in the audit log fields. If omitted, this value will
+     *           default to the username specified via {@link Entity.Options},
      *           or failing that, to 'SYSTEM'
+     */
+    /*
+     * A set of validated core parameters required for client initialization
+     * and query generation.
+     *
+     * @typedef {Object} Entity.Params
+     * @property {String|Number} hashKey The partition key for the entity
+     *           record.
+     * @property {String|Number} [rangeKey=undefined] A range key that for to
+     *           identify the record.
+     * @property {String} username The username derived from audit information,
+     *           or based on instance properties.
+     * @property {external:Logger} logger Reference to a properly initialized
+     *           logger object.
      */
     /**
      * @param {Entity.Options} [options={}] An options object that contains
@@ -125,6 +162,106 @@ class Entity {
         });
         this._username = username;
         this._awsRegion = awsRegion;
+    }
+
+    /**
+     * Validates and extracts the hash key from the input object. The key is
+     * extracted from the properties based on the
+     * [hashKeyName]{@link Entity#hashKeyName} value of the current entity. An
+     * error will be thrown if the input does not define a property with this
+     * name.
+     *
+     * @private
+     * @param {Entity.Keys} keys An object of key value pairs containing the
+     *        hash and range entity keys.
+     *
+     * @return {Number|String} The hash key value.
+     * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
+     *         invalid.
+     */
+    _getHashKey(keys) {
+        const hashKey = keys[this.hashKeyName];
+
+        const isValidString = _argValidator.checkString(hashKey);
+        const isValidNumber = _argValidator.checkNumber(hashKey);
+
+        if (!isValidString && !isValidNumber) {
+            throw new ArgError(
+                `Input does not define a valid hash key (${this.hashKeyName})`
+            );
+        }
+
+        return hashKey;
+    }
+
+    /**
+     * Validates and extracts the range key from the input object. The key is
+     * extracted from the properties based on the
+     * [rangeKeyName]{@link Entity#rangeKeyName} value of the current entity. An
+     * error will be thrown if the input does not define a property with this
+     * name.
+     *
+     * <p>
+     * If the current entity does not define a
+     * [rangeKeyName]{@link Entity#rangeKeyName], the range key value will not
+     * be validated.
+     * </p>
+     *
+     * @private
+     * @param {Entity.Keys} keys An object of key value pairs containing the
+     *        hash and range entity keys.
+     * @param {Boolean} [allowUndefined=false] If set to true, does not throw an
+     *        error if the range key value is undefined.
+     *
+     * @return {Number|String} The range key value.
+     * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
+     *         invalid.
+     */
+    _getRangeKey(keys, allowUndefined) {
+        if (this.rangeKeyName !== undefined) {
+            const rangeKey = keys[this.rangeKeyName];
+
+            if (typeof rangeKey === 'undefined' && allowUndefined) {
+                return rangeKey;
+            }
+
+            const isValidString = _argValidator.checkString(rangeKey);
+            const isValidNumber = _argValidator.checkNumber(rangeKey);
+
+            if (!isValidString && !isValidNumber) {
+                throw new ArgError(
+                    `Input does not define a valid range key (${
+                        this.rangeKeyName
+                    })`
+                );
+            }
+
+            return rangeKey;
+        }
+    }
+
+    /**
+     * Extracts the username from the audit object passed as an input.
+     *
+     * <p>
+     * If a valid object is not specified, or if the object does not define a
+     * valid username, the
+     * [username]{@link Entity#username} property of the entity is returned.
+     * </p>
+     *
+     * @private
+     * @param {Entity.Audit} audit The audit object.
+     *
+     * @return {String} The username value
+     */
+    _getUsername(audit) {
+        if (
+            !_argValidator.checkObject(audit) ||
+            !_argValidator.checkString(audit.username)
+        ) {
+            return this._username;
+        }
+        return audit.username;
     }
 
     /**
@@ -164,12 +301,53 @@ class Entity {
     }
 
     /**
+     * Validates and extracts core parameters required for dynamodb operations.
+     * This includes validation/extraction of hash and range key, determination
+     * of the username to associate with the operation, and a logger object
+     * pre initialized with appropriate metaadata.
+     *
+     * @protected
+     * @param {String} operation An operation name that will be used to tag log
+     *        messages.
+     * @param {Entity.Keys} keys An object containing the hash (and optionally
+     *        the range key) for the entity.
+     * @param {Entity.Audit} [audit] An audit object containing audit logging
+     *        information.
+     * @param {Boolean} [rangeKeyOptional=false] A boolean parameter that
+     *        indicates that the range key is optional. If this value is set to
+     *        true, no error will be thrown if the range key is undefined in the
+     *        keys object.
+     *
+     * @return {Entity.Params} A key value pair containing the parameters.
+     * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
+     *         invalid.
+     */
+    _initParams(operation, keys, audit, rangeKeyOptional) {
+        const hashKey = this._getHashKey(keys);
+        const rangeKey = this._getRangeKey(keys, rangeKeyOptional);
+        const username = this._getUsername(audit);
+        const logger = this._logger.child({
+            operation,
+            username,
+            hashKey,
+            rangeKey
+        });
+
+        return {
+            hashKey,
+            rangeKey,
+            username,
+            logger
+        };
+    }
+
+    /**
      * Initializes and returns the dynamodb client. The client is created, and
      * associated with the table for this entity. All subsequent configuration
      * must be done elsewhere.
      *
      * @protected
-     * @return {Object} A properly initialized client object.
+     * @return {external:DynamoDBClient} A properly initialized client object.
      */
     _initClient() {
         return _dynamoDb(
@@ -218,104 +396,6 @@ class Entity {
     }
 
     /**
-     * Validates and extracts the hash key from the input object. The key is
-     * extracted from the properties based on the
-     * [hashKeyName]{@link Entity#hashKeyName} value of the current entity. An
-     * error will be thrown if the input does not define a property with this
-     * name.
-     *
-     * @protected
-     * @param {Object} props An object of key value pairs
-     *
-     * @return {Number|String} The hash key value.
-     * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
-     *         invalid.
-     */
-    _getHashKey(props) {
-        const hashKey = props[this.hashKeyName];
-
-        const isValidString = _argValidator.checkString(hashKey);
-        const isValidNumber = _argValidator.checkNumber(hashKey);
-
-        if (!isValidString && !isValidNumber) {
-            throw new ArgError(
-                `Input does not define a valid hash key (${this.hashKeyName})`
-            );
-        }
-
-        return hashKey;
-    }
-
-    /**
-     * Validates and extracts the range key from the input object. The key is
-     * extracted from the properties based on the
-     * [rangeKeyName]{@link Entity#rangeKeyName} value of the current entity. An
-     * error will be thrown if the input does not define a property with this
-     * name.
-     *
-     * <p>
-     * If the current entity does not define a
-     * [rangeKeyName]{@link Entity#rangeKeyName], the range key value will not
-     * be validated.
-     * </p>
-     *
-     * @protected
-     * @param {Object} props An object of key value pairs
-     * @param {Boolean} [allowUndefined=false] If set to true, does not throw an
-     *        error if the range key value is undefined.
-     *
-     * @return {Number|String} The range key value.
-     * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
-     *         invalid.
-     */
-    _getRangeKey(props, allowUndefined) {
-        if (this.rangeKeyName !== undefined) {
-            const rangeKey = props[this.rangeKeyName];
-
-            if (typeof rangeKey === 'undefined' && allowUndefined) {
-                return rangeKey;
-            }
-
-            const isValidString = _argValidator.checkString(rangeKey);
-            const isValidNumber = _argValidator.checkNumber(rangeKey);
-
-            if (!isValidString && !isValidNumber) {
-                throw new ArgError(
-                    `Input does not define a valid range key (${
-                        this.rangeKeyName
-                    })`
-                );
-            }
-
-            return rangeKey;
-        }
-    }
-
-    /**
-     * Extracts the username from the audit object passed as an input.
-     *
-     * <p>
-     * If a valid object is not specified, or if the object does not define a
-     * valid username, the
-     * [username]{@link Entity#username} property of the entity is returned.
-     * </p>
-     *
-     * @protected
-     * @param {Object} audit The audit object.
-     *
-     * @return {String} The username value
-     */
-    _getUsername(audit) {
-        if (
-            !_argValidator.checkObject(audit) ||
-            !_argValidator.checkString(audit.username)
-        ) {
-            return this._username;
-        }
-        return audit.username;
-    }
-
-    /**
      * The name of the dynamodb table associated with this entity.
      *
      * @type {String}
@@ -346,7 +426,8 @@ class Entity {
      * Creates a new entity record in the dynamodb table.
      *
      * @param {Object} props An object of key value pairs representing the
-     *        data associated with the entity.
+     *        data associated with the entity. At a minimum, this object must
+     *        include the properties defined in {@link Entity.Keys}
      * @param {Entity.Audit} [audit={}] Audit information to associate with the
      *        query and entity record.
      *
@@ -476,14 +557,11 @@ class Entity {
         client = client.having('__status').eq('active');
         if (typeof rangeKey !== 'undefined') {
             logger.trace('Adding resume token');
-            client = client.resume({
-                [this.hashKeyName]: {
-                    S: hashKey
-                },
-                [this.rangeKeyName]: {
-                    S: rangeKey
-                }
-            });
+            const resumeToken = _awsSdk.DynamoDB.Converter.input({
+                [this.hashKeyName]: hashKey,
+                [this.rangeKeyName]: rangeKey
+            }).M;
+            client = client.resume(resumeToken);
         }
         if (_argValidator.checkNumber(count)) {
             logger.trace('Adding query limit');
