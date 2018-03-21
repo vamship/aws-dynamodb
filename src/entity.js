@@ -425,20 +425,22 @@ class Entity {
     /**
      * Creates a new entity record in the dynamodb table.
      *
-     * @param {Object} props An object of key value pairs representing the
-     *        data associated with the entity. At a minimum, this object must
-     *        include the properties defined in {@link Entity.Keys}
+     * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
+     *        entity record in the table.
+     * @param {Object} props An object of key value pairs representing the data
+     *        associated with the entity record.
      * @param {Entity.Audit} [audit={}] Audit information to associate with the
      *        query and entity record.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
      *         outcome of the create operation.
      */
-    create(props, audit) {
-        _argValidator.checkObject(props, 'Invalid props (arg #1)');
+    create(keys, props, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+        _argValidator.checkObject(props, 'Invalid props (arg #2)');
 
-        const hashKey = this._getHashKey(props);
-        const rangeKey = this._getRangeKey(props);
+        const hashKey = this._getHashKey(keys);
+        const rangeKey = this._getRangeKey(keys);
         const username = this._getUsername(audit);
         const logger = this._logger.child({
             operation: 'create',
@@ -451,7 +453,7 @@ class Entity {
         let client = this._initClient();
 
         logger.trace('Augmenting input payload');
-        const payload = Object.assign({}, props, {
+        const payload = Object.assign({}, props, keys, {
             __status: 'active',
             __version: _shortId.generate(),
             __createdBy: username,

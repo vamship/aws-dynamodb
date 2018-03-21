@@ -35,6 +35,40 @@ describe('Entity', () => {
         return new type(options);
     }
 
+    function _createInputs(entity) {
+        const keys = {
+            accountId: _testValues.getString('accountId')
+        };
+        if(entity instanceof RangeKeyEntity) {
+            keys.entityId = _testValues.getString('entityId');
+        }
+        const updateProps = {
+            prop1: _testValues.getString('prop1'),
+            prop2: _testValues.getString('prop2')
+        };
+        const deleteProps = {
+            prop3: _testValues.getString('prop3'),
+            prop4: _testValues.getString('prop4')
+        };
+        const version = _testValues.getString('version');
+        const props = {
+            foo: _testValues.getTimestamp(),
+            bar: _testValues.getNumber(),
+            baz: {
+                chaz: _testValues.getString('chaz')
+            }
+        };
+        entity._updateCopierResults = {
+            prop1: updateProps.prop1
+        };
+        entity._deleteCopierResults = {
+            prop1: updateProps.prop1,
+            prop4: updateProps.prop4
+        };
+
+        return { keys, props, updateProps, deleteProps, version };
+    }
+
     //The rangeKeyOptional parameter allows exclusion of range key tests even
     //when the entity defines a valid rangeKeyName. This is useful for
     //validating keys for list methods, where the range key need not be
@@ -365,14 +399,28 @@ describe('Entity', () => {
 
     describe('create()', () => {
         describe('[input validation]', () => {
+            it('should throw an error if invoked without valid keys', () => {
+                const message = 'Invalid keys (arg #1)';
+                const inputs = _testValues.allButObject();
+
+                inputs.forEach((keys) => {
+                    const wrapper = () => {
+                        const entity = _createEntity(HashKeyEntity);
+                        entity.create(keys);
+                    };
+                    expect(wrapper).to.throw(ArgError, message);
+                });
+            });
+
             it('should throw an error if invoked without valid props', () => {
-                const message = 'Invalid props (arg #1)';
+                const message = 'Invalid props (arg #2)';
                 const inputs = _testValues.allButObject();
 
                 inputs.forEach((props) => {
                     const wrapper = () => {
                         const entity = _createEntity(HashKeyEntity);
-                        entity.create(props);
+                        const { keys } = _createInputs(entity);
+                        entity.create(keys, props);
                     };
                     expect(wrapper).to.throw(ArgError, message);
                 });
@@ -381,17 +429,14 @@ describe('Entity', () => {
 
         describe(
             '[key validation]',
-            _getKeyValidationSuite((entity, keys) => entity.create(keys))
+            _getKeyValidationSuite((entity, keys) => entity.create(keys, {}))
         );
 
         describe(
             '[return value & client initialization]',
             _getClientInitAndReturnValueSuite((entity) => {
-                const props = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                return entity.create(props);
+                const { keys } = _createInputs(entity);
+                return entity.create(keys, {});
             })
         );
 
@@ -399,22 +444,14 @@ describe('Entity', () => {
             it('should invoke the insert method with the correct payload', () => {
                 const entity = _createEntity(RangeKeyEntity);
                 const username = _testValues.getString('username');
-                const props = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId'),
-                    foo: _testValues.getTimestamp(),
-                    bar: _testValues.getNumber(),
-                    baz: {
-                        chaz: _testValues.getString('chaz')
-                    }
-                };
+                const { keys, props } = _createInputs(entity);
 
                 const startTime = Date.now();
                 const insertMethod = _dynamoDbMock.mocks.insert;
 
                 expect(insertMethod.stub).to.not.have.been.called;
 
-                entity.create(props, { username });
+                entity.create(keys, props, { username });
 
                 expect(insertMethod.stub).to.have.been.calledOnce;
 
@@ -422,6 +459,9 @@ describe('Entity', () => {
                 const [payload, callback] = insertMethod.stub.args[0];
 
                 expect(payload).to.be.an('object');
+                for (let propName in keys) {
+                    expect(payload[propName]).to.deep.equal(keys[propName]);
+                }
                 for (let propName in props) {
                     expect(payload[propName]).to.deep.equal(props[propName]);
                 }
@@ -441,12 +481,9 @@ describe('Entity', () => {
                 inputs.forEach((audit) => {
                     const entity = _createEntity(RangeKeyEntity);
                     const insertMethod = _dynamoDbMock.mocks.insert;
-                    const props = {
-                        accountId: _testValues.getString('accountId'),
-                        entityId: _testValues.getString('entityId')
-                    };
+                    const { keys, props } = _createInputs(entity);
 
-                    entity.create(props, audit);
+                    entity.create(keys, props, audit);
                     const [payload] = insertMethod.stub.args[0];
                     expect(payload.__createdBy).to.equal('SYSTEM');
                     expect(payload.__updatedBy).to.equal('SYSTEM');
@@ -459,13 +496,10 @@ describe('Entity', () => {
                 inputs.forEach((username) => {
                     const entity = _createEntity(RangeKeyEntity);
                     const insertMethod = _dynamoDbMock.mocks.insert;
-                    const props = {
-                        accountId: _testValues.getString('accountId'),
-                        entityId: _testValues.getString('entityId')
-                    };
+                    const { keys, props } = _createInputs(entity);
                     const audit = { username };
 
-                    entity.create(props, audit);
+                    entity.create(keys, props, audit);
                     const [payload] = insertMethod.stub.args[0];
                     expect(payload.__createdBy).to.equal('SYSTEM');
                     expect(payload.__updatedBy).to.equal('SYSTEM');
@@ -476,11 +510,8 @@ describe('Entity', () => {
                 const entity = _createEntity(RangeKeyEntity);
                 const insertMethod = _dynamoDbMock.mocks.insert;
 
-                const props = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const ret = entity.create(props);
+                const { keys, props } = _createInputs(entity);
+                const ret = entity.create(keys, props);
 
                 const [, callback] = insertMethod.stub.args[0];
                 const error = new Error();
@@ -498,11 +529,8 @@ describe('Entity', () => {
                 const insertMethod = _dynamoDbMock.mocks.insert;
                 const message = 'something went wrong';
 
-                const props = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const ret = entity.create(props);
+                const { keys, props } = _createInputs(entity);
+                const ret = entity.create(keys, props);
 
                 const [, callback] = insertMethod.stub.args[0];
                 const error = new Error(message);
@@ -518,11 +546,8 @@ describe('Entity', () => {
                 const insertMethod = _dynamoDbMock.mocks.insert;
                 const expectedResponse = {};
 
-                const props = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const ret = entity.create(props);
+                const { keys, props } = _createInputs(entity);
+                const ret = entity.create(keys, props);
 
                 const [, callback] = insertMethod.stub.args[0];
                 callback(null, expectedResponse);
@@ -560,10 +585,7 @@ describe('Entity', () => {
         describe(
             '[return value & client initialization]',
             _getClientInitAndReturnValueSuite((entity) => {
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 return entity.lookup(keys);
             })
         );
@@ -571,10 +593,7 @@ describe('Entity', () => {
         describe('[method behavior]', () => {
             it('should invoke the get method with the the hash and range keys', () => {
                 const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
 
                 const getMethod = _dynamoDbMock.mocks.get;
                 const whereClause = _dynamoDbMock.mocks.where;
@@ -631,10 +650,7 @@ describe('Entity', () => {
                 const getMethod = _dynamoDbMock.mocks.get;
                 const message = 'something went wrong';
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const ret = entity.lookup(keys);
 
                 const [callback] = getMethod.stub.args[0];
@@ -651,10 +667,7 @@ describe('Entity', () => {
                 const getMethod = _dynamoDbMock.mocks.get;
                 const expectedResponse = {};
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const ret = entity.lookup(keys);
 
                 const [callback] = getMethod.stub.args[0];
@@ -693,10 +706,7 @@ describe('Entity', () => {
         describe(
             '[return value & client initialization]',
             _getClientInitAndReturnValueSuite((entity) => {
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 return entity.list(keys);
             })
         );
@@ -704,10 +714,7 @@ describe('Entity', () => {
         describe('[method behavior]', () => {
             it('should invoke the query method with the the hash key and conditions', () => {
                 const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const count = 10;
 
                 const queryMethod = _dynamoDbMock.mocks.query;
@@ -754,8 +761,7 @@ describe('Entity', () => {
             it('should not include the resume clause if the range key value is undefined', () => {
                 const entity = _createEntity(RangeKeyEntity);
                 const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: undefined
+                    accountId: _testValues.getString('accountId')
                 };
                 const count = 10;
 
@@ -810,10 +816,7 @@ describe('Entity', () => {
 
             it('should not include the limit clause if the count value is undefined', () => {
                 const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const count = undefined;
 
                 const limitClause = _dynamoDbMock.mocks.limit;
@@ -830,10 +833,7 @@ describe('Entity', () => {
                 const queryMethod = _dynamoDbMock.mocks.query;
                 const message = 'something went wrong';
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const ret = entity.list(keys);
 
                 const [callback] = queryMethod.stub.args[0];
@@ -850,10 +850,7 @@ describe('Entity', () => {
                 const queryMethod = _dynamoDbMock.mocks.query;
                 const expectedResponse = [];
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const ret = entity.list(keys);
 
                 const [callback] = queryMethod.stub.args[0];
@@ -890,9 +887,7 @@ describe('Entity', () => {
                 inputs.forEach((updateProps) => {
                     const wrapper = () => {
                         const entity = _createEntity(HashKeyEntity);
-                        const keys = {
-                            accountId: _testValues.getString('accountId')
-                        };
+                        const { keys } = _createInputs(entity);
                         entity.update(keys, updateProps);
                     };
                     expect(wrapper).to.throw(ArgError, message);
@@ -906,9 +901,7 @@ describe('Entity', () => {
                 inputs.forEach((deleteProps) => {
                     const wrapper = () => {
                         const entity = _createEntity(HashKeyEntity);
-                        const keys = {
-                            accountId: _testValues.getString('accountId')
-                        };
+                        const { keys } = _createInputs(entity);
                         const updateProps = {};
                         entity.update(keys, updateProps, deleteProps);
                     };
@@ -923,9 +916,7 @@ describe('Entity', () => {
                 inputs.forEach((version) => {
                     const wrapper = () => {
                         const entity = _createEntity(HashKeyEntity);
-                        const keys = {
-                            accountId: _testValues.getString('accountId')
-                        };
+                        const { keys } = _createInputs(entity);
                         const updateProps = {};
                         const deleteProps = {};
                         entity.update(keys, updateProps, deleteProps, version);
@@ -945,10 +936,7 @@ describe('Entity', () => {
         describe(
             '[return value & client initialization]',
             _getClientInitAndReturnValueSuite((entity) => {
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const updateProps = {};
                 const deleteProps = {};
                 const version = _testValues.getString('version');
@@ -957,31 +945,6 @@ describe('Entity', () => {
         );
 
         describe('[method behavior]', () => {
-            function _initPayload(entity) {
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const updateProps = {
-                    prop1: _testValues.getString('prop1'),
-                    prop2: _testValues.getString('prop2')
-                };
-                const deleteProps = {
-                    prop3: _testValues.getString('prop3'),
-                    prop4: _testValues.getString('prop4')
-                };
-                const version = _testValues.getString('version');
-                entity._updateCopierResults = {
-                    prop1: updateProps.prop1
-                };
-                entity._deleteCopierResults = {
-                    prop1: updateProps.prop1,
-                    prop4: updateProps.prop4
-                };
-
-                return { keys, updateProps, deleteProps, version };
-            }
-
             it('should invoke the update and delete copiers to copy update and delete fields', () => {
                 const entity = _createEntity(RangeKeyEntity);
                 const {
@@ -989,7 +952,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
                 const updateCopierResults = entity._updateCopierResults;
 
                 const updateCopyMethod = entity.updateCopierMock.mocks.copy;
@@ -1024,7 +987,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
                 entity._updateCopierResults = {};
                 entity._deleteCopierResults = {};
 
@@ -1059,7 +1022,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
 
                 const startTime = Date.now();
                 const updateMethod = _dynamoDbMock.mocks.update;
@@ -1115,6 +1078,20 @@ describe('Entity', () => {
                 expect(callback).to.be.a('function');
             });
 
+            it('should use the the default username if no audit information is specified', () => {
+                const inputs = _testValues.allButObject();
+
+                inputs.forEach((audit) => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    const updateMethod = _dynamoDbMock.mocks.update;
+                    const { keys, version } = _createInputs(entity);
+
+                    entity.update(keys, {}, {}, version, audit);
+                    const [payload] = updateMethod.stub.args[0];
+                    expect(payload.__updatedBy).to.equal('SYSTEM');
+                });
+            });
+
             it('should not use the rangeKey in the query if the entity does not require one', () => {
                 const entity = _createEntity(HashKeyEntity);
                 const {
@@ -1122,7 +1099,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
 
                 const whereClause = _dynamoDbMock.mocks.where;
                 const eqClause = _dynamoDbMock.mocks.eq;
@@ -1143,7 +1120,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
 
                 const updateMethod = _dynamoDbMock.mocks.update;
                 const ret = entity.update(
@@ -1171,7 +1148,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
                 const updateMethod = _dynamoDbMock.mocks.update;
                 const message = 'something went wrong';
 
@@ -1198,7 +1175,7 @@ describe('Entity', () => {
                     updateProps,
                     deleteProps,
                     version
-                } = _initPayload(entity);
+                } = _createInputs(entity);
                 const updateMethod = _dynamoDbMock.mocks.update;
                 const expectedResponse = {
                     keys,
@@ -1250,9 +1227,7 @@ describe('Entity', () => {
                 inputs.forEach((version) => {
                     const wrapper = () => {
                         const entity = _createEntity(HashKeyEntity);
-                        const keys = {
-                            accountId: _testValues.getString('accountId')
-                        };
+                        const { keys } = _createInputs(entity);
                         entity.delete(keys, version);
                     };
                     expect(wrapper).to.throw(ArgError, message);
@@ -1270,10 +1245,7 @@ describe('Entity', () => {
         describe(
             '[return value & client initialization]',
             _getClientInitAndReturnValueSuite((entity) => {
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
+                const { keys } = _createInputs(entity);
                 const version = _testValues.getString('version');
                 return entity.delete(keys, version);
             })
@@ -1282,11 +1254,7 @@ describe('Entity', () => {
         describe('[method behavior]', () => {
             it('should invoke the delete method with the the hash and range keys', () => {
                 const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const version = _testValues.getString('version');
+                const { keys, version } = _createInputs(entity);
 
                 const deleteMethod = _dynamoDbMock.mocks.delete;
                 const whereClause = _dynamoDbMock.mocks.where;
@@ -1321,10 +1289,7 @@ describe('Entity', () => {
 
             it('should use only the hash key if the entity does not require a range key', () => {
                 const entity = _createEntity(HashKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId')
-                };
-                const version = _testValues.getString('version');
+                const { keys, version } = _createInputs(entity);
 
                 const whereClause = _dynamoDbMock.mocks.where;
                 const eqClause = _dynamoDbMock.mocks.eq;
@@ -1343,11 +1308,7 @@ describe('Entity', () => {
 
             it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
                 const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const version = _testValues.getString('version');
+                const { keys, version } = _createInputs(entity);
 
                 const deleteMethod = _dynamoDbMock.mocks.delete;
                 const ret = entity.delete(keys, version);
@@ -1368,11 +1329,7 @@ describe('Entity', () => {
                 const deleteMethod = _dynamoDbMock.mocks.delete;
                 const message = 'something went wrong';
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const version = _testValues.getString('version');
+                const { keys, version } = _createInputs(entity);
                 const ret = entity.delete(keys, version);
 
                 const [callback] = deleteMethod.stub.args[0];
@@ -1389,11 +1346,7 @@ describe('Entity', () => {
                 const deleteMethod = _dynamoDbMock.mocks.delete;
                 const expectedResponse = {};
 
-                const keys = {
-                    accountId: _testValues.getString('accountId'),
-                    entityId: _testValues.getString('entityId')
-                };
-                const version = _testValues.getString('version');
+                const { keys, version } = _createInputs(entity);
                 const ret = entity.delete(keys, version);
 
                 const [callback] = deleteMethod.stub.args[0];
