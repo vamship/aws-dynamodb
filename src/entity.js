@@ -347,14 +347,26 @@ class Entity {
      * must be done elsewhere.
      *
      * @protected
+     * @param {String|Number} [hashKey=undefined] If specified, injects a where
+     *        clause for the entity's hash key.
+     * @param {String|Number} [rangeKey=undefined] If specified, injects a where
+     *        clause for the entity's range key.
      * @return {external:DynamoDBClient} A properly initialized client object.
      */
-    _initClient() {
-        return _dynamoDb(
+    _initClient(hashKey, rangeKey) {
+        let client = _dynamoDb(
             new _awsSdk.DynamoDB({
                 region: this._awsRegion
             })
         ).table(this.tableName);
+        if (typeof hashKey !== 'undefined') {
+            client = client.where(this.hashKeyName).eq(hashKey);
+        }
+        if (typeof rangeKey !== 'undefined') {
+            client = client.where(this.rangeKeyName).eq(rangeKey);
+        }
+
+        return client;
     }
 
     /**
@@ -439,15 +451,8 @@ class Entity {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
         _argValidator.checkObject(props, 'Invalid props (arg #2)');
 
-        const hashKey = this._getHashKey(keys);
-        const rangeKey = this._getRangeKey(keys);
-        const username = this._getUsername(audit);
-        const logger = this._logger.child({
-            operation: 'create',
-            username,
-            hashKey,
-            rangeKey
-        });
+        const params = this._initParams('create', keys, audit);
+        const { username, logger } = params;
 
         logger.trace('Initializing DynamoDB client');
         let client = this._initClient();
@@ -489,24 +494,13 @@ class Entity {
     lookup(keys, audit) {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
 
-        const hashKey = this._getHashKey(keys);
-        const rangeKey = this._getRangeKey(keys);
-        const username = this._getUsername(audit);
-        const logger = this._logger.child({
-            operation: 'lookup',
-            username,
-            hashKey,
-            rangeKey
-        });
+        const params = this._initParams('lookup', keys, audit);
+        const { hashKey, rangeKey, logger } = params;
 
         logger.trace('Initializing DynamoDB client');
-        let client = this._initClient();
+        let client = this._initClient(hashKey, rangeKey);
 
         logger.trace('Adding query conditions');
-        client = client.where(this.hashKeyName).eq(hashKey);
-        if (typeof rangeKey !== 'undefined') {
-            client = client.where(this.rangeKeyName).eq(rangeKey);
-        }
         client = client.if('__status').eq('active');
 
         logger.trace('Looking up entity record');
@@ -540,22 +534,13 @@ class Entity {
     list(keys, count, audit) {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
 
-        const hashKey = this._getHashKey(keys);
-        const rangeKey = this._getRangeKey(keys, true);
-        const username = this._getUsername(audit);
-        const logger = this._logger.child({
-            operation: 'list',
-            username,
-            hashKey,
-            rangeKey,
-            count
-        });
+        const params = this._initParams('list', keys, audit, true);
+        const { hashKey, rangeKey, logger } = params;
 
         logger.trace('Initializing DynamoDB client');
-        let client = this._initClient();
+        let client = this._initClient(hashKey);
 
         logger.trace('Adding query conditions');
-        client = client.where(this.hashKeyName).eq(hashKey);
         client = client.having('__status').eq('active');
         if (typeof rangeKey !== 'undefined') {
             logger.trace('Adding resume token');
@@ -605,18 +590,11 @@ class Entity {
         );
         _argValidator.checkString(version, 1, 'Invalid version (arg #4)');
 
-        const hashKey = this._getHashKey(keys);
-        const rangeKey = this._getRangeKey(keys);
-        const username = this._getUsername(audit);
-        const logger = this._logger.child({
-            operation: 'update',
-            username,
-            hashKey,
-            rangeKey
-        });
+        const params = this._initParams('update', keys, audit);
+        const { hashKey, rangeKey, username, logger } = params;
 
         logger.trace('Initializing DynamoDB client');
-        let client = this._initClient();
+        let client = this._initClient(hashKey, rangeKey);
 
         logger.trace('Determining properties to update');
         let propsToUpdate = this._updateCopier.copy(updateProps);
@@ -635,10 +613,6 @@ class Entity {
 
         if (properties.length > 0) {
             logger.trace('Adding query conditions to client');
-            client = client.where(this.hashKeyName).eq(hashKey);
-            if (typeof rangeKey !== 'undefined') {
-                client = client.where(this.rangeKeyName).eq(rangeKey);
-            }
             client = client.if('__status').eq('active');
             client = client.if('__version').eq(version);
             client = client.return(client.ALL_OLD);
@@ -702,24 +676,13 @@ class Entity {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
         _argValidator.checkString(version, 1, 'Invalid version (arg #4)');
 
-        const hashKey = this._getHashKey(keys);
-        const rangeKey = this._getRangeKey(keys);
-        const username = this._getUsername(audit);
-        const logger = this._logger.child({
-            operation: 'delete',
-            username,
-            hashKey,
-            rangeKey
-        });
+        const params = this._initParams('create', keys, audit);
+        const { hashKey, rangeKey, logger } = params;
 
         logger.trace('Initializing DynamoDB client');
-        let client = this._initClient();
+        let client = this._initClient(hashKey, rangeKey);
 
         logger.trace('Adding query conditions');
-        client = client.where(this.hashKeyName).eq(hashKey);
-        if (typeof rangeKey !== 'undefined') {
-            client = client.where(this.rangeKeyName).eq(rangeKey);
-        }
         client = client.if('__status').eq('active');
         client = client.if('__version').eq(version);
 
