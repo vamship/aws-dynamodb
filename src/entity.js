@@ -42,6 +42,77 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  * @external {DynamoDbClient}
  * @see {@link https://http://awspilot.github.io/dynamodb-oop}
  */
+ /**
+  * Options object passed to the entity, containing references to a logger
+  * object.
+  *
+  * @typedef {Object} EntityOptions
+  * @property {Object} [logger] logger object that can be used write log
+  *           messages. If omitted, a new log object will be created using
+  *           the getLogger() method from the {@link external:Logger} module.
+  * @property {String} [username='SYSTEM'] The username to use for audit log
+  *           fields on the entity. This value may be overridden by
+  *           passing in a username value for create/update calls.
+  * @property {String} [awsRegion=undefined] The AWS region to use when
+  *           initializing the client. Leave undefined to use the region
+  *           defined by the execution environment. See
+  *           [AWS DynamoDB documentation]{@link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB.html#constructor-property}
+  *           for more information.
+  */
+ /**
+  * A set of keys that uniquely identify the entity record in the table. This
+  * object can define two properties:
+  * <ul>
+  * <li>
+  * <b>hashKeyName</b>: This property must have the same name as the value of
+  * [hashKeyName]{@link Entity#hashKeyName}
+  * </li>
+  * <li>
+  * <b>rangeKeyName</b>: This property must have the same name as the value
+  * of [rangeKeyName]{@link Entity#rangeKeyName}. The range key name property
+  * can be undefined, depending on the type of query to be performed, and/or
+  * the configuration of the entity object.
+  * </li>
+  * </ul>
+  *
+  * <p>
+  * The values of these properties can be either numbers or strings.
+  * </p>
+  *
+  * @example
+  * // Assume that the entity has a hash key named "accountId" of type
+  * // string, and a range key named "entityId" of type number.
+  *
+  * const keys = {
+  *  accountId: 'myAccount',
+  *  entityId: 1001
+  * };
+  *
+  * @typedef {Object} EntityKeys
+  */
+ /**
+  * Audit information for entity operations.
+  *
+  * @typedef {Object} EntityAudit
+  * @property {String} [username='SYSTEM'] The username to associate with an
+  *           entity in the audit log fields. If omitted, this value will
+  *           default to the username specified via {@link EntityOptions},
+  *           or failing that, to 'SYSTEM'
+  */
+ /**
+  * A set of validated core parameters required for client initialization
+  * and query generation.
+  *
+  * @typedef {Object} EntityParams
+  * @property {String|Number} hashKey The partition key for the entity
+  *           record.
+  * @property {String|Number} [rangeKey=undefined] A range key that for to
+  *           identify the record.
+  * @property {String} username The username derived from audit information,
+  *           or based on instance properties.
+  * @property {external:Logger} logger Reference to a properly initialized
+  *           logger object.
+  */
 /**
  * Abstract representation of a single DynamoDB table, providing methods for
  * common CRUD operations. This is an opinionated implementation that injects
@@ -67,78 +138,7 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  */
 class Entity {
     /**
-     * Options object passed to the entity, containing references to a logger
-     * object.
-     *
-     * @typedef {Object} Entity.Options
-     * @property {Object} [logger] logger object that can be used write log
-     *           messages. If omitted, a new log object will be created using
-     *           the getLogger() method from the {@link external:Logger} module.
-     * @property {String} [username='SYSTEM'] The username to use for audit log
-     *           fields on the entity. This value may be overridden by
-     *           passing in a username value for create/update calls.
-     * @property {String} [awsRegion=undefined] The AWS region to use when
-     *           initializing the client. Leave undefined to use the region
-     *           defined by the execution environment. See
-     *           [AWS DynamoDB documentation]{@link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB.html#constructor-property}
-     *           for more information.
-     */
-    /**
-     * A set of keys that uniquely identify the entity record in the table. This
-     * object can define two properties:
-     * <ul>
-     * <li>
-     * <b>hashKeyName</b>: This property must have the same name as the value of
-     * [hashKeyName]{@link Entity#hashKeyName}
-     * </li>
-     * <li>
-     * <b>rangeKeyName</b>: This property must have the same name as the value
-     * of [rangeKeyName]{@link Entity#rangeKeyName}. The range key name property
-     * can be undefined, depending on the type of query to be performed, and/or
-     * the configuration of the entity object.
-     * </li>
-     * </ul>
-     *
-     * <p>
-     * The values of these properties can be either numbers or strings.
-     * </p>
-     *
-     * @example
-     * // Assume that the entity has a hash key named "accountId" of type
-     * // string, and a range key named "entityId" of type number.
-     *
-     * const keys = {
-     *  accountId: 'myAccount',
-     *  entityId: 1001
-     * };
-     *
-     * @typedef {Object} Entity.Keys
-     */
-    /**
-     * Audit information for entity operations.
-     *
-     * @typedef {Object} Entity.Audit
-     * @property {String} [username='SYSTEM'] The username to associate with an
-     *           entity in the audit log fields. If omitted, this value will
-     *           default to the username specified via {@link Entity.Options},
-     *           or failing that, to 'SYSTEM'
-     */
-    /*
-     * A set of validated core parameters required for client initialization
-     * and query generation.
-     *
-     * @typedef {Object} Entity.Params
-     * @property {String|Number} hashKey The partition key for the entity
-     *           record.
-     * @property {String|Number} [rangeKey=undefined] A range key that for to
-     *           identify the record.
-     * @property {String} username The username derived from audit information,
-     *           or based on instance properties.
-     * @property {external:Logger} logger Reference to a properly initialized
-     *           logger object.
-     */
-    /**
-     * @param {Entity.Options} [options={}] An options object that contains
+     * @param {EntityOptions} [options={}] An options object that contains
      *        useful references for use within the entity.
      */
     constructor(options) {
@@ -172,7 +172,7 @@ class Entity {
      * name.
      *
      * @private
-     * @param {Entity.Keys} keys An object of key value pairs containing the
+     * @param {EntityKeys} keys An object of key value pairs containing the
      *        hash and range entity keys.
      *
      * @return {Number|String} The hash key value.
@@ -208,7 +208,7 @@ class Entity {
      * </p>
      *
      * @private
-     * @param {Entity.Keys} keys An object of key value pairs containing the
+     * @param {EntityKeys} keys An object of key value pairs containing the
      *        hash and range entity keys.
      * @param {Boolean} [allowUndefined=false] If set to true, does not throw an
      *        error if the range key value is undefined.
@@ -250,7 +250,7 @@ class Entity {
      * </p>
      *
      * @private
-     * @param {Entity.Audit} audit The audit object.
+     * @param {EntityAudit} audit The audit object.
      *
      * @return {String} The username value
      */
@@ -309,16 +309,16 @@ class Entity {
      * @protected
      * @param {String} operation An operation name that will be used to tag log
      *        messages.
-     * @param {Entity.Keys} keys An object containing the hash (and optionally
+     * @param {EntityKeys} keys An object containing the hash (and optionally
      *        the range key) for the entity.
-     * @param {Entity.Audit} [audit] An audit object containing audit logging
+     * @param {EntityAudit} [audit] An audit object containing audit logging
      *        information.
      * @param {Boolean} [rangeKeyOptional=false] A boolean parameter that
      *        indicates that the range key is optional. If this value is set to
      *        true, no error will be thrown if the range key is undefined in the
      *        keys object.
      *
-     * @return {Entity.Params} A key value pair containing the parameters.
+     * @return {EntityParams} A key value pair containing the parameters.
      * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
      *         invalid.
      */
@@ -437,11 +437,11 @@ class Entity {
     /**
      * Creates a new entity record in the dynamodb table.
      *
-     * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
      * @param {Object} props An object of key value pairs representing the data
      *        associated with the entity record.
-     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
      *        query and entity record.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
@@ -482,9 +482,9 @@ class Entity {
     /**
      * Returns an existing entity from the dynamodb table.
      *
-     * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
-     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
      *        query.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
@@ -511,7 +511,7 @@ class Entity {
     /**
      * Returns a list of entities that match the hash key.
      *
-     * @param {Entity.Keys} keys A set of key(s) that will be used in the list
+     * @param {EntityKeys} keys A set of key(s) that will be used in the list
      *        query. All queries will use the hash key to fetch a list of
      *        records. If a range key is specified, it will be used to generate
      *        a continuation token for the list query. The continuation token,
@@ -524,7 +524,7 @@ class Entity {
      * @param {Number} [count=undefined] The number of records to return in a
      *        single fetch operation. If omitted, all records for the entity
      *        will be returned.
-     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
      *        query.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
@@ -563,7 +563,7 @@ class Entity {
     /**
      * Updates an existing entity record in the dynamodb table.
      *
-     * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
      * @param {Object} updateProps An object of key value pairs representing the
      *        data to be updated in the record.
@@ -571,7 +571,7 @@ class Entity {
      *        data to be deleted from the record.
      * @param {String} version A value that is used to perform optimistic
      *        locking for concurrent writes.
-     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
      *        query.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
@@ -662,11 +662,11 @@ class Entity {
      * [update()]{@link Entity#update} method should be used, with the
      * '__status' field set to 'deleted'.
      *
-     * @param {Entity.Keys} keys A set of key(s) that uniquely identify the
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
      * @param {String} version A value that is used to perform optimistic
      *        locking for concurrent writes.
-     * @param {Entity.Audit} [audit={}] Audit information to associate with the
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
      *        query.
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
