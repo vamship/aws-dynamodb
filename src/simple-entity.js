@@ -1,10 +1,16 @@
 'use strict';
 
+const Promise = require('bluebird').Promise;
 const _awsSdk = require('aws-sdk');
 const _dynamoDb = require('@awspilot/dynamodb');
+const _shortId = require('shortid');
 const SelectiveCopy = require('selective-copy');
 const { argValidator: _argValidator } = require('@vamship/arg-utils');
 const { ArgError } = require('@vamship/error-types').args;
+const {
+    DuplicateRecordError,
+    ConcurrencyControlError
+} = require('@vamship/error-types').data;
 const _logger = require('@vamship/logger');
 
 const LOG_METHODS = [
@@ -108,14 +114,6 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  *           logger object.
  */
 /**
- * A function that wraps query execution, and returns a promise that reflects
- * the result of query execution.
- *
- * @callback EntityQuery
- * @returns {Promise} A promise that reflects the result of query execution.
- */
-
-/**
  * Abstract representation of a single DynamoDB table, providing methods for
  * common CRUD operations. This is an opinionated implementation that injects
  * audit tracking fields and a field to support logical deletes. Methods are
@@ -188,7 +186,9 @@ class Entity {
         const isValidNumber = _argValidator.checkNumber(hashKey);
 
         if (!isValidString && !isValidNumber) {
-            throw new ArgError(`Invalid hash key (keys.${this.hashKeyName})`);
+            throw new ArgError(
+                `Input does not define a valid hash key (${this.hashKeyName})`
+            );
         }
 
         return hashKey;
@@ -230,7 +230,9 @@ class Entity {
 
             if (!isValidString && !isValidNumber) {
                 throw new ArgError(
-                    `Invalid range key (keys.${this.rangeKeyName})`
+                    `Input does not define a valid range key (${
+                        this.rangeKeyName
+                    })`
                 );
             }
 
@@ -263,16 +265,52 @@ class Entity {
     }
 
     /**
+     * Executes a query action, and returns the results of the query. If the
+     * query throws an error, it will be mapped to a standard set of errors.
+     *
+     * @protected
+     * @static
+     * @param {Function} action A function that wraps the function exectution,
+     *        and returns a promise that reflects the result of that operation.
+     * @param {external:Logger} logger Reference to a logger object
+     *
+     * @return {Promise} A promise that will be rejected or resolved based on
+     *         the outcome of the operation.
+     */
+    static _execQuery(action, logger) {
+        const startTime = Date.now();
+        logger.trace('Executing query');
+        return action().then(
+            (results) => {
+                logger.info('Query execution completed', {
+                    duration: Date.now() - startTime
+                });
+                return results;
+            },
+            (error) => {
+                const { code, status } = error;
+                logger.error('Error executing query', {
+                    code,
+                    status,
+                    duration: Date.now() - startTime
+                });
+                logger.trace(error);
+                throw error;
+            }
+        );
+    }
+
+    /**
      * Validates and extracts core parameters required for dynamodb operations.
      * This includes validation/extraction of hash and range key, determination
      * of the username to associate with the operation, and a logger object
      * pre initialized with appropriate metaadata.
      *
      * @protected
-     * @param {EntityKeys} keys An object containing the hash (and optionally
-     *        the range key) for the entity.
      * @param {String} operation An operation name that will be used to tag log
      *        messages.
+     * @param {EntityKeys} keys An object containing the hash (and optionally
+     *        the range key) for the entity.
      * @param {EntityAudit} [audit] An audit object containing audit logging
      *        information.
      * @param {Boolean} [rangeKeyOptional=false] A boolean parameter that
@@ -284,9 +322,7 @@ class Entity {
      * @throws {external:ErrorTypes} An ArgError will be thrown if the keys are
      *         invalid.
      */
-    _initParams(keys, operation, audit, rangeKeyOptional) {
-        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
-
+    _initParams(operation, keys, audit, rangeKeyOptional) {
         const hashKey = this._getHashKey(keys);
         const rangeKey = this._getRangeKey(keys, rangeKeyOptional);
         const username = this._getUsername(audit);
@@ -331,46 +367,6 @@ class Entity {
         }
 
         return client;
-    }
-
-    /**
-     * Executes a query action, and returns the results of the query. If the
-     * query throws an error, it will be mapped to a standard set of errors.
-     *
-     * @protected
-     * @param {EntityQuery} query The query to execute.
-     * @param {external:Logger} [logger=this._logger] Reference to a logger
-     *        object. If omitted, the default instance logger will be used.
-     *
-     * @return {Promise} A promise that will be rejected or resolved based on
-     *         the outcome of the operation.
-     */
-    _execQuery(query, logger) {
-        _argValidator.checkFunction(query, 'Invalid query (arg #1)');
-        if (!logger) {
-            logger = this._logger;
-        }
-
-        const startTime = Date.now();
-        logger.trace('Executing query');
-        return query().then(
-            (results) => {
-                logger.info('Query execution completed', {
-                    duration: Date.now() - startTime
-                });
-                return results;
-            },
-            (error) => {
-                const { code, status } = error;
-                logger.error('Error executing query', {
-                    code,
-                    status,
-                    duration: Date.now() - startTime
-                });
-                logger.trace(error);
-                throw error;
-            }
-        );
     }
 
     /**
@@ -436,6 +432,270 @@ class Entity {
      */
     get rangeKeyName() {
         return;
+    }
+
+    /**
+     * Creates a new entity record in the dynamodb table.
+     *
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
+     *        entity record in the table.
+     * @param {Object} props An object of key value pairs representing the data
+     *        associated with the entity record.
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
+     *        query and entity record.
+     *
+     * @return {Promise} A promise that will be rejected/resolved based on the
+     *         outcome of the create operation.
+     */
+    create(keys, props, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+        _argValidator.checkObject(props, 'Invalid props (arg #2)');
+
+        const params = this._initParams('create', keys, audit);
+        const { username, logger } = params;
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient();
+
+        logger.trace('Augmenting input payload');
+        const payload = Object.assign({}, props, keys, {
+            __status: 'active',
+            __version: _shortId.generate(),
+            __createdBy: username,
+            __createDate: Date.now(),
+            __updatedBy: username,
+            __updateDate: Date.now()
+        });
+
+        logger.trace('Inserting entity record');
+        const action = Promise.promisify(client.insert.bind(client, payload));
+        return Entity._execQuery(action, logger).then(undefined, (error) => {
+            if (error.code === 'ConditionalCheckFailedException') {
+                logger.error('Conditional check failed on insert');
+                throw new DuplicateRecordError();
+            } else {
+                throw error;
+            }
+        });
+    }
+
+    /**
+     * Returns an existing entity from the dynamodb table.
+     *
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
+     *        entity record in the table.
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
+     *        query.
+     *
+     * @return {Promise} A promise that will be rejected/resolved based on the
+     *         outcome of the create operation. If resolved, the data will
+     *         contain the entity record.
+     */
+    lookup(keys, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+
+        const params = this._initParams('lookup', keys, audit);
+        const { hashKey, rangeKey, logger } = params;
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient(hashKey, rangeKey);
+
+        logger.trace('Adding query conditions');
+        client = client.if('__status').eq('active');
+
+        logger.trace('Looking up entity record');
+        const action = Promise.promisify(client.get.bind(client));
+        return Entity._execQuery(action, logger);
+    }
+
+    /**
+     * Returns a list of entities that match the hash key.
+     *
+     * @param {EntityKeys} keys A set of key(s) that will be used in the list
+     *        query. All queries will use the hash key to fetch a list of
+     *        records. If a range key is specified, it will be used to generate
+     *        a continuation token for the list query. The continuation token,
+     *        taken in conjunction with the <b>count</b> option can be used to
+     *        perform paged fetches.
+     *        <p>
+     *        If omitted, all records will be returned starting from the first
+     *        record in the table.
+     *        </p>
+     * @param {Number} [count=undefined] The number of records to return in a
+     *        single fetch operation. If omitted, all records for the entity
+     *        will be returned.
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
+     *        query.
+     *
+     * @return {Promise} A promise that will be rejected/resolved based on the
+     *         outcome of the create operation. If resolved, the data will
+     *         contain a list of entities that match the search conditions.
+     */
+    list(keys, count, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+
+        const params = this._initParams('list', keys, audit, true);
+        const { hashKey, rangeKey, logger } = params;
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient(hashKey);
+
+        logger.trace('Adding query conditions');
+        client = client.having('__status').eq('active');
+        if (typeof rangeKey !== 'undefined') {
+            logger.trace('Adding resume token');
+            const resumeToken = _awsSdk.DynamoDB.Converter.input({
+                [this.hashKeyName]: hashKey,
+                [this.rangeKeyName]: rangeKey
+            }).M;
+            client = client.resume(resumeToken);
+        }
+        if (_argValidator.checkNumber(count)) {
+            logger.trace('Adding query limit');
+            client = client.limit(count);
+        }
+
+        logger.trace('Retrieving entity record list');
+        const action = Promise.promisify(client.query.bind(client));
+        return Entity._execQuery(action, logger);
+    }
+
+    /**
+     * Updates an existing entity record in the dynamodb table.
+     *
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
+     *        entity record in the table.
+     * @param {Object} updateProps An object of key value pairs representing the
+     *        data to be updated in the record.
+     * @param {Object} deleteProps An object of key value pairs representing the
+     *        data to be deleted from the record.
+     * @param {String} version A value that is used to perform optimistic
+     *        locking for concurrent writes.
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
+     *        query.
+     *
+     * @return {Promise} A promise that will be rejected/resolved based on the
+     *         outcome of the create operation. If resolved, the data will
+     *         contain a list of updated and deleted fields.
+     */
+    update(keys, updateProps, deleteProps, version, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+        _argValidator.checkObject(
+            updateProps,
+            'Invalid update properties (arg #2)'
+        );
+        _argValidator.checkObject(
+            deleteProps,
+            'Invalid delete properties (arg #3)'
+        );
+        _argValidator.checkString(version, 1, 'Invalid version (arg #4)');
+
+        const params = this._initParams('update', keys, audit);
+        const { hashKey, rangeKey, username, logger } = params;
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient(hashKey, rangeKey);
+
+        logger.trace('Determining properties to update');
+        let propsToUpdate = this._updateCopier.copy(updateProps);
+        logger.trace('Update payload', { propsToUpdate });
+
+        logger.trace('Determining properties to delete');
+        propsToUpdate = this._deleteCopier.copy(
+            deleteProps,
+            propsToUpdate,
+            (property, value) => client.del()
+        );
+        logger.trace('Update and delete payload', { propsToUpdate });
+
+        const properties = Object.keys(propsToUpdate);
+        logger.info('Properties to be updated', { properties });
+
+        if (properties.length > 0) {
+            logger.trace('Adding query conditions to client');
+            client = client.if('__status').eq('active');
+            client = client.if('__version').eq(version);
+            client = client.return(client.ALL_OLD);
+
+            logger.trace('Setting version and audit information');
+            propsToUpdate.__version = _shortId.generate();
+            propsToUpdate.__updatedBy = username;
+            propsToUpdate.__updateDate = Date.now();
+
+            logger.trace('Updating entity record');
+            const action = Promise.promisify(
+                client.update.bind(client, propsToUpdate)
+            );
+            return Entity._execQuery(action, logger).then(
+                (results) => {
+                    return {
+                        keys,
+                        properties,
+                        __version: version
+                    };
+                },
+                (error) => {
+                    if (error.code === 'ConditionalCheckFailedException') {
+                        logger.error('Conditional check failed on update');
+                        throw new ConcurrencyControlError();
+                    } else {
+                        throw error;
+                    }
+                }
+            );
+        } else {
+            logger.info('No fields need to be updated or deleted');
+            return Promise.try(() => {
+                return {
+                    keys,
+                    properties,
+                    __version: version
+                };
+            });
+        }
+    }
+
+    /**
+     * Deletes an existing entity from the dynamodb table. This operation
+     * results in a hard delete, resulting in the removal of the record from the
+     * table. If a logical delete is desiired, the
+     * [update()]{@link Entity#update} method should be used, with the
+     * '__status' field set to 'deleted'.
+     *
+     * @param {EntityKeys} keys A set of key(s) that uniquely identify the
+     *        entity record in the table.
+     * @param {String} version A value that is used to perform optimistic
+     *        locking for concurrent writes.
+     * @param {EntityAudit} [audit={}] Audit information to associate with the
+     *        query.
+     *
+     * @return {Promise} A promise that will be rejected/resolved based on the
+     *         outcome of the create operation.
+     */
+    delete(keys, version, audit) {
+        _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
+        _argValidator.checkString(version, 1, 'Invalid version (arg #4)');
+
+        const params = this._initParams('create', keys, audit);
+        const { hashKey, rangeKey, logger } = params;
+
+        logger.trace('Initializing DynamoDB client');
+        let client = this._initClient(hashKey, rangeKey);
+
+        logger.trace('Adding query conditions');
+        client = client.if('__status').eq('active');
+        client = client.if('__version').eq(version);
+
+        logger.trace('Deleting entity record');
+        const action = Promise.promisify(client.delete.bind(client));
+        return Entity._execQuery(action, logger).then(undefined, (error) => {
+            if (error.code === 'ConditionalCheckFailedException') {
+                logger.error('Conditional check failed on delete');
+                throw new ConcurrencyControlError();
+            } else {
+                throw error;
+            }
+        });
     }
 }
 
