@@ -116,19 +116,11 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  */
 
 /**
- * Abstract representation of a single DynamoDB table, providing methods for
- * common CRUD operations. This is an opinionated implementation that injects
- * audit tracking fields and a field to support logical deletes. Methods are
- * provided for physical deletes if logical deletes are not necessary.
+ * Abstract representation of a single DynamoDB table that is designed to be
+ * extended by child classes. This class provides the following features:
+ * <ul>
  *
- * <p>
- * The entities are by design lightweight, and do not perform too many
- * validations, like checking for data types on specific fields, user
- * authorization, etc. It is assumed that the caller of this module (like a
- * Lambda function) will perform these tasks.
- * </p>
- *
- * <p>
+ * <li>
  * This class is intended to serve as a base class for specialized entity
  * classes that will implement multiple properties on the base class, including,
  * but not limited to [<b>tableName</b>]{@link Entity#tableName},
@@ -136,7 +128,12 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  * [<b>rangeKey</b>]{@link Entity#rangeKey} (optional),
  * [<b>updateProps</b>]{@link Entity#updateProps}, and
  * [<b>updateProps</b>]{@link Entity#deleteProps}.
- * </p>
+ * </li>
+ *
+ * <li> Provides utility methods for key validation, initialization of a
+ * DynamoDB client object, and execution of queries</li>
+ *
+ * </ul>
  */
 class Entity {
     /**
