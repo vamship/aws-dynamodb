@@ -1,37 +1,30 @@
 'use strict';
 
-const _sinon = require('sinon');
 const _chai = require('chai');
 _chai.use(require('sinon-chai'));
 _chai.use(require('chai-as-promised'));
 const expect = _chai.expect;
+const _sinon = require('sinon');
 
-const _awsSdk = require('aws-sdk');
-const Promise = require('bluebird').Promise;
 const _rewire = require('rewire');
-const SelectiveCopy = require('selective-copy');
 
-const { testValues: _testValues, ObjectMock } = require('@vamship/test-utils');
+const {
+    testValues: _testValues,
+    SuperSpyBuilder,
+    ObjectMock
+} = require('@vamship/test-utils');
 const { ArgError } = require('@vamship/error-types').args;
 const {
     DuplicateRecordError,
     ConcurrencyControlError
 } = require('@vamship/error-types').data;
 
-const Entity = _rewire('../../src/simple-entity');
+const Entity = require('../../src/entity');
+const SimpleEntity = _rewire('../../src/simple-entity');
 
-describe('Entity', () => {
-    function _createOptions(options) {
-        return Object.assign(
-            {
-                logger: _loggerMock.__loggerInstance
-            },
-            options
-        );
-    }
-
+describe('SimpleEntity', () => {
     function _createEntity(type, options) {
-        options = _createOptions(options);
+        options = Object.assign({}, options);
         return new type(options);
     }
 
@@ -69,137 +62,7 @@ describe('Entity', () => {
         return { keys, props, updateProps, deleteProps, version };
     }
 
-    //The rangeKeyOptional parameter allows exclusion of range key tests even
-    //when the entity defines a valid rangeKeyName. This is useful for
-    //validating keys for list methods, where the range key need not be
-    //specified.
-    function _getKeyValidationSuite(invoke, rangeKeyOptional) {
-        return () => {
-            it('should throw an error if a valid hash key is not defined', () => {
-                const inputs = _testValues.allButSelected('string', 'number');
-                inputs.push('');
-
-                inputs.forEach((keyValue) => {
-                    const entity = _createEntity(HashKeyEntity);
-                    const message = `Input does not define a valid hash key (${
-                        entity.hashKeyName
-                    })`;
-                    const wrapper = () => {
-                        const keys = {
-                            accountId: keyValue
-                        };
-                        invoke(entity, keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            if (!rangeKeyOptional) {
-                it('should throw an error if a valid range key is not defined, and one is required', () => {
-                    const inputs = _testValues.allButSelected(
-                        'string',
-                        'number'
-                    );
-                    inputs.push('');
-
-                    inputs.forEach((keyValue) => {
-                        const entity = _createEntity(RangeKeyEntity);
-                        const message = `Input does not define a valid range key (${
-                            entity.rangeKeyName
-                        })`;
-                        const wrapper = () => {
-                            const keys = {
-                                accountId: _testValues.getString(
-                                    'hashKey_value'
-                                ),
-                                entityId: keyValue
-                            };
-                            invoke(entity, keys);
-                        };
-                        expect(wrapper).to.throw(ArgError, message);
-                    });
-                });
-            }
-
-            it('should not throw an error if a valid rangeKey is not defined one is not required', () => {
-                const inputs = _testValues.allButSelected('string', 'number');
-                inputs.push('');
-
-                inputs.forEach((keyValue) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const keys = {
-                            accountId: _testValues.getString('hashKey_value'),
-                            entityId: keyValue
-                        };
-                        invoke(entity, keys);
-                    };
-                    expect(wrapper).to.not.throw(ArgError);
-                });
-            });
-        };
-    }
-
-    function _getClientInitAndReturnValueSuite(invoke) {
-        return () => {
-            it('should return a promise when invoked', () => {
-                const entity = _createEntity(RangeKeyEntity);
-
-                const ret = invoke(entity);
-                expect(ret).to.be.an.instanceof(Promise);
-            });
-
-            it('should initialize the dynamodb client using the AWS SDK', () => {
-                const awsRegion = _testValues.getString('awsRegion');
-                const entity = _createEntity(RangeKeyEntity, {
-                    awsRegion
-                });
-                const awsDynamoDbCtor = _awsSdkMock.mocks.DynamoDB;
-
-                expect(awsDynamoDbCtor.stub).to.not.have.been.called;
-                expect(_dynamoDbMock.ctor).to.not.have.been.called;
-
-                invoke(entity);
-
-                expect(awsDynamoDbCtor.stub).to.have.been.calledOnce;
-                expect(awsDynamoDbCtor.stub).to.have.been.calledWithNew;
-                expect(awsDynamoDbCtor.stub.args[0][0]).to.deep.equal({
-                    region: awsRegion
-                });
-                expect(_dynamoDbMock.ctor).to.have.been.calledOnce;
-                expect(_dynamoDbMock.ctor).to.have.been.calledWith(
-                    _awsSdkMock._dynamoDbRef
-                );
-            });
-
-            it('should access the correct table', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const tableMethod = _dynamoDbMock.mocks.table;
-
-                expect(tableMethod.stub).to.not.have.been.called;
-                invoke(entity);
-                expect(tableMethod.stub).to.have.been.calledWith(
-                    entity.tableName
-                );
-            });
-        };
-    }
-
-    const DEFAULT_USERNAME = 'SYSTEM';
-    const LOG_METHODS = [
-        'trace',
-        'debug',
-        'info',
-        'warn',
-        'error',
-        'fatal',
-        'silent'
-    ];
-    let _loggerMock = null;
-    let _awsSdkMock = null;
-    let _dynamoDbMock = null;
-
-    class MockEntity extends Entity {
+    class MockEntity extends SimpleEntity {
         constructor(options) {
             super(options);
             this.updateCopierMock = new ObjectMock().addMock('copy', () => {
@@ -249,27 +112,23 @@ describe('Entity', () => {
         }
     }
 
+    const LOG_METHODS = [
+        'trace',
+        'debug',
+        'info',
+        'warn',
+        'error',
+        'fatal',
+        'silent'
+    ];
+
+    let _superSpy = null;
+    let _dynamoDbMock = null;
+    let _awsSdkMock = null;
+    let _loggerMock = null;
+
     beforeEach(() => {
-        _loggerMock = new ObjectMock().addMock(
-            'getLogger',
-            () => _loggerMock.__loggerInstance
-        );
-        _loggerMock.__loggerInstance = LOG_METHODS.reduce((result, method) => {
-            result[method] = _sinon.spy();
-            return result;
-        }, {});
-        _loggerMock.__loggerInstance.child = _sinon
-            .stub()
-            .returns(_loggerMock.__loggerInstance);
-
-        _awsSdkMock = new ObjectMock().addMock('DynamoDB', () => {
-            return _awsSdkMock._dynamoDbRef;
-        });
-        _awsSdkMock._dynamoDbRef = new ObjectMock();
-        _awsSdkMock.instance.DynamoDB.Converter = _awsSdk.DynamoDB.Converter;
-
         _dynamoDbMock = new ObjectMock()
-            .addMock('table', () => _dynamoDbMock.instance)
             .addMock('where', () => _dynamoDbMock.instance)
             .addMock('if', () => _dynamoDbMock.instance)
             .addMock('eq', () => _dynamoDbMock.instance)
@@ -284,39 +143,71 @@ describe('Entity', () => {
             .addMock('insert')
             .addMock('get');
 
-        _dynamoDbMock.instance._DEL = _testValues.getString('DEL');
-        _dynamoDbMock.instance.ALL_OLD = _testValues.getString('ALL_OLD');
+        const resumeToken = {};
+        const converter = new ObjectMock().addMock('input', {
+            M: resumeToken
+        });
 
-        Entity.__set__('_logger', _loggerMock.instance);
-        Entity.__set__('_awsSdk', _awsSdkMock.instance);
-        Entity.__set__('_dynamoDb', _dynamoDbMock.ctor);
+        _awsSdkMock = {
+            _resumeToken: resumeToken,
+            _converter: converter,
+            DynamoDB: {
+                Converter: converter.instance
+            }
+        };
+
+        _loggerMock = new ObjectMock().addMock(
+            'getLogger',
+            () => _loggerMock.__loggerInstance
+        );
+        _loggerMock.__loggerInstance = LOG_METHODS.reduce((result, method) => {
+            result[method] = _sinon.spy();
+            return result;
+        }, {});
+        _loggerMock.__loggerInstance.child = _sinon
+            .stub()
+            .returns(_loggerMock.__loggerInstance);
+
+        const initParamsFake = function(keys, action, audit) {
+            return {
+                username: _superSpy._username,
+                logger: _loggerMock.__loggerInstance,
+                hashKey: keys.accountId,
+                rangeKey: keys.entityId
+            };
+        };
+        const initClientFake = function() {
+            return _dynamoDbMock.instance;
+        };
+
+        _superSpy = new SuperSpyBuilder(Entity, SimpleEntity)
+            .addMock('_initParams', initParamsFake, true)
+            .addMock('_initClient', initClientFake, true);
+        _superSpy._username = _testValues.getString('username');
+        _superSpy.inject();
+
+        SimpleEntity.__set__('_awsSdk', _awsSdkMock);
+    });
+
+    afterEach(() => {
+        _superSpy.restore();
     });
 
     describe('ctor()', () => {
+        it('should invoke the super constructor with correct parameters', () => {
+            const options = {};
+            const superMethod = _superSpy.mocks.super;
+
+            expect(superMethod.stub).to.not.have.been.called;
+            const entity = new SimpleEntity(options);
+
+            expect(entity).to.be.an.instanceOf(Entity);
+            expect(superMethod.stub).to.have.been.calledOnce;
+            expect(superMethod.stub).to.have.been.calledWithExactly(options);
+        });
+
         it('should expose the expected methods and properties', () => {
-            const username = _testValues.getString('username');
-            const logger = _loggerMock.__loggerInstance;
-            const awsRegion = _testValues.getString('awsRegion');
-            const options = {
-                logger,
-                awsRegion,
-                username
-            };
-            const entity = new Entity(options);
-
-            expect(entity._updateCopier).to.be.an.instanceof(SelectiveCopy);
-            // NOTE: Inspecting private member.
-            expect(entity._updateCopier._properties).to.deep.equal([]);
-
-            expect(entity._deleteCopier).to.be.an.instanceof(SelectiveCopy);
-            // NOTE: Inspecting private member.
-            expect(entity._deleteCopier._properties).to.deep.equal([]);
-
-            //NOTE: Inspecting private members
-            expect(entity._username).to.equal(username);
-            expect(entity._awsRegion).to.equal(awsRegion);
-
-            expect(entity._logger).to.equal(logger);
+            const entity = new SimpleEntity({});
 
             expect(entity.tableName).to.be.undefined;
             expect(entity.hashKeyName).to.be.undefined;
@@ -328,496 +219,471 @@ describe('Entity', () => {
             expect(entity.update).to.be.a('function');
             expect(entity.delete).to.be.a('function');
         });
-
-        it('should create a default logger and username if the options object is not valid', () => {
-            const inputs = _testValues.allButObject({});
-
-            inputs.forEach((options) => {
-                const getLoggerMethod = _loggerMock.mocks.getLogger;
-                expect(getLoggerMethod.stub).to.not.have.been.called;
-
-                const entity = new Entity(options);
-
-                expect(getLoggerMethod.stub).to.have.been.calledOnce;
-                const [ctorName, props] = getLoggerMethod.stub.args[0];
-                expect(ctorName).to.equal(entity.constructor.name);
-                expect(props).to.deep.equal({});
-
-                expect(entity._username).to.equal(DEFAULT_USERNAME);
-
-                expect(entity._awsRegion).to.be.undefined;
-
-                getLoggerMethod.reset();
-            });
-        });
-
-        it('should create a default logger if the options does not define a valid logger', () => {
-            const inputs = _testValues.allButSelected(undefined);
-
-            inputs.forEach((logger) => {
-                const options = _createOptions();
-                options.logger = logger;
-
-                const getLoggerMethod = _loggerMock.mocks.getLogger;
-                expect(getLoggerMethod.stub).to.not.have.been.called;
-
-                const entity = new Entity(options);
-
-                expect(getLoggerMethod.stub).to.have.been.calledOnce;
-                const [ctorName, props] = getLoggerMethod.stub.args[0];
-                expect(ctorName).to.equal(entity.constructor.name);
-                expect(props).to.deep.equal({});
-
-                getLoggerMethod.reset();
-            });
-        });
-
-        it('should create a default username if the options does not define a valid username', () => {
-            const inputs = _testValues.allButString('');
-
-            inputs.forEach((username) => {
-                const options = _createOptions();
-                options.username = username;
-
-                const entity = new Entity(options);
-                expect(entity._username).to.equal(DEFAULT_USERNAME);
-            });
-        });
-
-        it('should leave the AWS region as undefined if the options does not define one', () => {
-            const inputs = _testValues.allButString('');
-
-            inputs.forEach((awsRegion) => {
-                const options = _createOptions();
-                options.awsRegion = awsRegion;
-
-                const entity = new Entity(options);
-                expect(entity._awsRegion).to.be.undefined;
-            });
-        });
     });
 
     describe('create()', () => {
-        describe('[input validation]', () => {
-            it('should throw an error if invoked without valid keys', () => {
-                const message = 'Invalid keys (arg #1)';
-                const inputs = _testValues.allButObject();
+        it('should throw an error if invoked without valid props', () => {
+            const message = 'Invalid props (arg #2)';
+            const inputs = _testValues.allButObject();
 
-                inputs.forEach((keys) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        entity.create(keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            it('should throw an error if invoked without valid props', () => {
-                const message = 'Invalid props (arg #2)';
-                const inputs = _testValues.allButObject();
-
-                inputs.forEach((props) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const { keys } = _createInputs(entity);
-                        entity.create(keys, props);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
+            inputs.forEach((props) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    const { keys } = _createInputs(entity);
+                    entity.create(keys, props);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
         });
 
-        describe(
-            '[key validation]',
-            _getKeyValidationSuite((entity, keys) => entity.create(keys, {}))
-        );
+        it("should initialize parameters by using the super's _initParams() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-        describe(
-            '[return value & client initialization]',
-            _getClientInitAndReturnValueSuite((entity) => {
-                const { keys } = _createInputs(entity);
-                return entity.create(keys, {});
-            })
-        );
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-        describe('[method behavior]', () => {
-            it('should invoke the insert method with the correct payload', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const username = _testValues.getString('username');
-                const { keys, props } = _createInputs(entity);
+            entity.create(keys, {}, audit);
 
-                const startTime = Date.now();
-                const insertMethod = _dynamoDbMock.mocks.insert;
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'create',
+                audit,
+                false
+            );
+        });
 
-                expect(insertMethod.stub).to.not.have.been.called;
+        it('should set rangeKeyOptional=true if the entity does not require a range key', () => {
+            const entity = _createEntity(HashKeyEntity);
+            const { keys } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-                entity.create(keys, props, { username });
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-                expect(insertMethod.stub).to.have.been.calledOnce;
+            entity.create(keys, {}, audit);
 
-                const endTime = Date.now();
-                const [payload, callback] = insertMethod.stub.args[0];
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'create',
+                audit,
+                true
+            );
+        });
 
-                expect(payload).to.be.an('object');
-                for (let propName in keys) {
-                    expect(payload[propName]).to.deep.equal(keys[propName]);
-                }
-                for (let propName in props) {
-                    expect(payload[propName]).to.deep.equal(props[propName]);
-                }
-                expect(payload.__status).to.equal('active');
-                expect(payload.__version).to.be.a('string').and.not.be.empty;
-                expect(payload.__createdBy).to.equal(username);
-                expect(payload.__createDate).to.be.within(startTime, endTime);
-                expect(payload.__updatedBy).to.equal(username);
-                expect(payload.__updateDate).to.be.within(startTime, endTime);
+        it("should initialize the dynamodb client by using the super's _initClient() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const initClientMethod = _superSpy.mocks._initClient;
 
-                expect(callback).to.be.a('function');
-            });
+            expect(initClientMethod.stub).to.not.have.been.called;
 
-            it('should use the the default username if no audit information is specified', () => {
-                const inputs = _testValues.allButObject();
+            entity.create(keys, {});
 
-                inputs.forEach((audit) => {
-                    const entity = _createEntity(RangeKeyEntity);
-                    const insertMethod = _dynamoDbMock.mocks.insert;
-                    const { keys, props } = _createInputs(entity);
+            expect(initClientMethod.stub).to.have.been.calledOnce;
+            expect(initClientMethod.stub).to.be.calledWithExactly();
+        });
 
-                    entity.create(keys, props, audit);
-                    const [payload] = insertMethod.stub.args[0];
-                    expect(payload.__createdBy).to.equal('SYSTEM');
-                    expect(payload.__updatedBy).to.equal('SYSTEM');
-                });
-            });
+        it('should return a promise when invoked', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, props } = _createInputs(entity);
 
-            it('should use the the default username if no audit does not define a username field', () => {
-                const inputs = _testValues.allButString('');
+            const ret = entity.create(keys, props);
 
-                inputs.forEach((username) => {
-                    const entity = _createEntity(RangeKeyEntity);
-                    const insertMethod = _dynamoDbMock.mocks.insert;
-                    const { keys, props } = _createInputs(entity);
-                    const audit = { username };
+            expect(ret).to.be.an('object');
+            expect(ret.then).to.be.a('function');
+        });
 
-                    entity.create(keys, props, audit);
-                    const [payload] = insertMethod.stub.args[0];
-                    expect(payload.__createdBy).to.equal('SYSTEM');
-                    expect(payload.__updatedBy).to.equal('SYSTEM');
-                });
-            });
+        it('should invoke the insert method with the correct payload', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, props } = _createInputs(entity);
+            const startTime = Date.now();
+            const insertMethod = _dynamoDbMock.mocks.insert;
 
-            it('should reject the promise with a DuplicateRecordError if record already exists', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const insertMethod = _dynamoDbMock.mocks.insert;
+            expect(insertMethod.stub).to.not.have.been.called;
 
-                const { keys, props } = _createInputs(entity);
-                const ret = entity.create(keys, props);
+            entity.create(keys, props);
 
-                const [, callback] = insertMethod.stub.args[0];
-                const error = new Error();
-                error.code = 'ConditionalCheckFailedException';
-                error.status = 400;
-                callback(error);
+            expect(insertMethod.stub).to.have.been.calledOnce;
 
-                expect(ret)
-                    .to.be.rejectedWith(DuplicateRecordError)
-                    .and.notify(done);
-            });
+            const endTime = Date.now();
+            const [payload, callback] = insertMethod.stub.args[0];
 
-            it('should reject the promise if the insert operation fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const insertMethod = _dynamoDbMock.mocks.insert;
-                const message = 'something went wrong';
+            expect(payload).to.be.an('object');
+            for (let propName in keys) {
+                expect(payload[propName]).to.deep.equal(keys[propName]);
+            }
+            for (let propName in props) {
+                expect(payload[propName]).to.deep.equal(props[propName]);
+            }
+            expect(payload.__status).to.equal('active');
+            expect(payload.__version).to.be.a('string').and.not.be.empty;
+            expect(payload.__createDate).to.be.within(startTime, endTime);
+            expect(payload.__updateDate).to.be.within(startTime, endTime);
 
-                const { keys, props } = _createInputs(entity);
-                const ret = entity.create(keys, props);
+            expect(callback).to.be.a('function');
+        });
 
-                const [, callback] = insertMethod.stub.args[0];
-                const error = new Error(message);
-                callback(error);
+        it('should use the username from _initParams for audit information', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const insertMethod = _dynamoDbMock.mocks.insert;
+            const { keys, props } = _createInputs(entity);
+            const audit = {
+                username: _testValues.getString('username')
+            };
 
-                expect(ret)
-                    .to.be.rejectedWith(Error, message)
-                    .and.notify(done);
-            });
+            // Note: Even though we are passing in an audit object here, the
+            // mock always returns a custom username. This is the point of the
+            // test - the method should always use the username returned by the
+            // parent class.
+            entity.create(keys, props, audit);
+            const [payload] = insertMethod.stub.args[0];
+            expect(payload.__createdBy).to.equal(_superSpy._username);
+            expect(payload.__updatedBy).to.equal(_superSpy._username);
+        });
 
-            it('should resolve the promise if the insert operation succeeds', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const insertMethod = _dynamoDbMock.mocks.insert;
-                const expectedResponse = {};
+        it('should reject the promise with a DuplicateRecordError if record already exists', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const insertMethod = _dynamoDbMock.mocks.insert;
 
-                const { keys, props } = _createInputs(entity);
-                const ret = entity.create(keys, props);
+            const { keys, props } = _createInputs(entity);
+            const ret = entity.create(keys, props);
 
-                const [, callback] = insertMethod.stub.args[0];
-                callback(null, expectedResponse);
+            const [, callback] = insertMethod.stub.args[0];
+            const error = new Error();
+            error.code = 'ConditionalCheckFailedException';
+            error.status = 400;
+            callback(error);
 
-                expect(ret)
-                    .to.be.fulfilled.then((response) => {
-                        expect(response).to.equal(expectedResponse);
-                    })
-                    .then(done, done);
-            });
+            expect(ret)
+                .to.be.rejectedWith(DuplicateRecordError)
+                .and.notify(done);
+        });
+
+        it('should reject the promise if the insert operation fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const insertMethod = _dynamoDbMock.mocks.insert;
+            const message = 'something went wrong';
+
+            const { keys, props } = _createInputs(entity);
+            const ret = entity.create(keys, props);
+
+            const [, callback] = insertMethod.stub.args[0];
+            const error = new Error(message);
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(Error, message)
+                .and.notify(done);
+        });
+
+        it('should resolve the promise if the insert operation succeeds', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const insertMethod = _dynamoDbMock.mocks.insert;
+            const expectedResponse = {};
+
+            const { keys, props } = _createInputs(entity);
+            const ret = entity.create(keys, props);
+
+            const [, callback] = insertMethod.stub.args[0];
+            callback(null, expectedResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response).to.equal(expectedResponse);
+                })
+                .then(done, done);
         });
     });
 
     describe('lookup()', () => {
-        describe('[input validation]', () => {
-            it('should throw an error if invoked without valid keys', () => {
-                const message = 'Invalid keys (arg #1)';
-                const inputs = _testValues.allButObject();
+        it('should throw an error if invoked without valid keys', () => {
+            const message = 'Invalid keys (arg #1)';
+            const inputs = _testValues.allButObject();
 
-                inputs.forEach((keys) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        entity.lookup(keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
+            inputs.forEach((keys) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    entity.lookup(keys);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
         });
 
-        describe(
-            '[key validation]',
-            _getKeyValidationSuite((entity, keys) => entity.lookup(keys))
-        );
+        it("should initialize parameters by using the super's _initParams() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-        describe(
-            '[return value & client initialization]',
-            _getClientInitAndReturnValueSuite((entity) => {
-                const { keys } = _createInputs(entity);
-                return entity.lookup(keys);
-            })
-        );
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-        describe('[method behavior]', () => {
-            it('should invoke the get method with the the hash and range keys', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const { keys } = _createInputs(entity);
+            entity.lookup(keys, audit);
 
-                const getMethod = _dynamoDbMock.mocks.get;
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
-                const ifClause = _dynamoDbMock.mocks.if;
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'lookup',
+                audit,
+                false
+            );
+        });
 
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(ifClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
-                expect(getMethod.stub).to.not.have.been.called;
+        it('should set rangeKeyOptional=true if the entity does not require a range key', () => {
+            const entity = _createEntity(HashKeyEntity);
+            const { keys } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-                entity.lookup(keys);
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-                expect(getMethod.stub).to.have.been.calledOnce;
-                expect(whereClause.stub).to.have.been.calledTwice;
-                expect(ifClause.stub).to.have.been.calledOnce;
-                expect(eqClause.stub).to.have.been.calledThrice;
+            entity.lookup(keys, audit);
 
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-                expect(whereClause.stub.args[1][0]).to.equal('entityId');
-                expect(eqClause.stub.args[1][0]).to.equal(keys.entityId);
-                expect(ifClause.stub.args[0][0]).to.equal('__status');
-                expect(eqClause.stub.args[2][0]).to.equal('active');
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'lookup',
+                audit,
+                true
+            );
+        });
 
-                const [callback] = getMethod.stub.args[0];
+        it("should initialize the dynamodb client by using the super's _initClient() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const initClientMethod = _superSpy.mocks._initClient;
 
-                expect(callback).to.be.a('function');
-            });
+            expect(initClientMethod.stub).to.not.have.been.called;
 
-            it('should use only the hash key if the entity does not require a range key', () => {
-                const entity = _createEntity(HashKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId')
-                };
+            entity.lookup(keys);
 
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
+            expect(initClientMethod.stub).to.have.been.calledOnce;
+            expect(initClientMethod.stub).to.be.calledWithExactly(
+                keys.accountId,
+                keys.entityId
+            );
+        });
 
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
+        it('should apply a filter to check if the record is active', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
 
-                entity.lookup(keys);
+            const ifClause = _dynamoDbMock.mocks.if;
+            const eqClause = _dynamoDbMock.mocks.eq;
 
-                expect(whereClause.stub).to.have.been.calledOnce;
-                expect(eqClause.stub).to.have.been.calledTwice;
+            expect(ifClause.stub).to.not.have.been.called;
+            expect(eqClause.stub).to.not.have.been.called;
 
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-            });
+            entity.lookup(keys);
 
-            it('should reject the promise if the lookup operation fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const getMethod = _dynamoDbMock.mocks.get;
-                const message = 'something went wrong';
+            expect(ifClause.stub).to.have.been.calledOnce;
+            expect(ifClause.stub).to.have.been.calledWithExactly('__status');
 
-                const { keys } = _createInputs(entity);
-                const ret = entity.lookup(keys);
+            expect(eqClause.stub).to.have.been.calledOnce;
+            expect(eqClause.stub).to.have.been.calledWithExactly('active');
+        });
 
-                const [callback] = getMethod.stub.args[0];
-                const error = new Error(message);
-                callback(error);
+        it('should return a promise when invoked', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
 
-                expect(ret)
-                    .to.be.rejectedWith(Error, message)
-                    .and.notify(done);
-            });
+            const ret = entity.lookup(keys);
 
-            it('should resolve the promise if the lookup operation succeeds', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const getMethod = _dynamoDbMock.mocks.get;
-                const expectedResponse = {};
+            expect(ret).to.be.an('object');
+            expect(ret.then).to.be.a('function');
+        });
 
-                const { keys } = _createInputs(entity);
-                const ret = entity.lookup(keys);
+        it('should invoke the get method with the correct payload', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const getMethod = _dynamoDbMock.mocks.get;
 
-                const [callback] = getMethod.stub.args[0];
-                callback(null, expectedResponse);
+            expect(getMethod.stub).to.not.have.been.called;
 
-                expect(ret)
-                    .to.be.fulfilled.then((response) => {
-                        expect(response).to.equal(expectedResponse);
-                    })
-                    .then(done, done);
-            });
+            entity.lookup(keys);
+
+            expect(getMethod.stub).to.have.been.calledOnce;
+
+            const [callback] = getMethod.stub.args[0];
+
+            expect(callback).to.be.a('function');
+        });
+
+        it('should reject the promise if the lookup operation fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const getMethod = _dynamoDbMock.mocks.get;
+            const message = 'something went wrong';
+
+            const { keys } = _createInputs(entity);
+            const ret = entity.lookup(keys);
+
+            const [callback] = getMethod.stub.args[0];
+            const error = new Error(message);
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(Error, message)
+                .and.notify(done);
+        });
+
+        it('should resolve the promise if the lookup operation succeeds', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const getMethod = _dynamoDbMock.mocks.get;
+            const expectedResponse = {};
+
+            const { keys } = _createInputs(entity);
+            const ret = entity.lookup(keys);
+
+            const [callback] = getMethod.stub.args[0];
+            callback(null, expectedResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response).to.equal(expectedResponse);
+                })
+                .then(done, done);
         });
     });
 
     describe('list()', () => {
-        describe('[input validation]', () => {
-            it('should throw an error if invoked without valid keys', () => {
-                const message = 'Invalid keys (arg #1)';
-                const inputs = _testValues.allButObject();
+        it('should throw an error if invoked without valid keys', () => {
+            const message = 'Invalid keys (arg #1)';
+            const inputs = _testValues.allButObject();
 
-                inputs.forEach((keys) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        entity.list(keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
+            inputs.forEach((keys) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    entity.list(keys);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
         });
 
-        describe(
-            '[key validation]',
-            _getKeyValidationSuite((entity, keys) => entity.list(keys), true)
-        );
+        it("should initialize parameters by using the super's _initParams() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-        describe(
-            '[return value & client initialization]',
-            _getClientInitAndReturnValueSuite((entity) => {
-                const { keys } = _createInputs(entity);
-                return entity.list(keys);
-            })
-        );
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-        describe('[method behavior]', () => {
-            it('should invoke the query method with the the hash key and conditions', () => {
+            entity.list(keys, undefined, audit);
+
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'list',
+                audit,
+                true
+            );
+        });
+
+        it("should initialize the dynamodb client by using the super's _initClient() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const initClientMethod = _superSpy.mocks._initClient;
+
+            expect(initClientMethod.stub).to.not.have.been.called;
+
+            entity.list(keys);
+
+            expect(initClientMethod.stub).to.have.been.calledOnce;
+            expect(initClientMethod.stub).to.be.calledWithExactly(
+                keys.accountId
+            );
+        });
+
+        it('should apply a filter to check if the record is active', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+
+            const havingClause = _dynamoDbMock.mocks.having;
+            const eqClause = _dynamoDbMock.mocks.eq;
+
+            expect(havingClause.stub).to.not.have.been.called;
+            expect(eqClause.stub).to.not.have.been.called;
+
+            entity.list(keys);
+
+            expect(havingClause.stub).to.have.been.calledOnce;
+            expect(havingClause.stub).to.have.been.calledWithExactly(
+                '__status'
+            );
+
+            expect(eqClause.stub).to.have.been.calledOnce;
+            expect(eqClause.stub).to.have.been.calledWithExactly('active');
+        });
+
+        it('should set a resume token if the keys include a rangeKey', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+
+            const inputMethod = _awsSdkMock._converter.mocks.input;
+            const resumeClause = _dynamoDbMock.mocks.resume;
+
+            expect(inputMethod.stub).to.not.have.been.called;
+            expect(resumeClause.stub).to.not.have.been.called;
+
+            entity.list(keys);
+
+            expect(inputMethod.stub).to.have.been.calledOnce;
+            expect(inputMethod.stub.args[0][0]).to.deep.equal({
+                accountId: keys.accountId,
+                entityId: keys.entityId
+            });
+
+            expect(resumeClause.stub).to.have.been.calledOnce;
+            expect(resumeClause.stub).to.have.been.calledWithExactly(
+                _awsSdkMock._resumeToken
+            );
+        });
+
+        it('should not set a resume token if the keys do not include a rangeKey', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            delete keys.entityId;
+
+            const inputMethod = _awsSdkMock._converter.mocks.input;
+            const resumeClause = _dynamoDbMock.mocks.resume;
+
+            expect(inputMethod.stub).to.not.have.been.called;
+            expect(resumeClause.stub).to.not.have.been.called;
+
+            entity.list(keys);
+
+            expect(inputMethod.stub).to.not.have.been.called;
+            expect(resumeClause.stub).to.not.have.been.called;
+        });
+
+        it('should set a count limit if a valid count is provided', () => {
+            const inputs = [1, 10, 13, 852];
+
+            inputs.forEach((count) => {
                 const entity = _createEntity(RangeKeyEntity);
                 const { keys } = _createInputs(entity);
-                const count = 10;
 
-                const queryMethod = _dynamoDbMock.mocks.query;
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
-                const havingClause = _dynamoDbMock.mocks.having;
                 const limitClause = _dynamoDbMock.mocks.limit;
-                const resumeClause = _dynamoDbMock.mocks.resume;
 
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(havingClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
                 expect(limitClause.stub).to.not.have.been.called;
-                expect(resumeClause.stub).to.not.have.been.called;
-                expect(queryMethod.stub).to.not.have.been.called;
 
                 entity.list(keys, count);
 
-                expect(queryMethod.stub).to.have.been.calledOnce;
-                expect(whereClause.stub).to.have.been.calledOnce;
-                expect(havingClause.stub).to.have.been.calledOnce;
-                expect(eqClause.stub).to.have.been.calledTwice;
                 expect(limitClause.stub).to.have.been.calledOnce;
-                expect(resumeClause.stub).to.have.been.calledOnce;
+                expect(limitClause.stub).to.have.been.calledWithExactly(count);
 
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-                expect(havingClause.stub.args[0][0]).to.equal('__status');
-                expect(eqClause.stub.args[1][0]).to.equal('active');
-                expect(limitClause.stub.args[0][0]).to.equal(count);
-                expect(resumeClause.stub.args[0][0]).to.deep.equal({
-                    accountId: {
-                        S: keys.accountId
-                    },
-                    entityId: {
-                        S: keys.entityId
-                    }
-                });
-
-                const [callback] = queryMethod.stub.args[0];
-                expect(callback).to.be.a('function');
+                limitClause.reset();
             });
+        });
 
-            it('should not include the resume clause if the range key value is undefined', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const keys = {
-                    accountId: _testValues.getString('accountId')
-                };
-                const count = 10;
+        it('should not set a count limit if a valid count is not provided', () => {
+            const inputs = _testValues.allButNumber(-1);
 
-                const resumeClause = _dynamoDbMock.mocks.resume;
-
-                expect(resumeClause.stub).to.not.have.been.called;
-
-                entity.list(keys, count);
-
-                expect(resumeClause.stub).to.not.have.been.called;
-            });
-
-            it('should create the resume clause with the correct data types based on key values', () => {
-                const inputs = [
-                    {
-                        accountId: _testValues.getString('accountId'),
-                        entityId: _testValues.getString('entityId')
-                    },
-                    {
-                        accountId: _testValues.getNumber(),
-                        entityId: _testValues.getString('entityId')
-                    },
-                    {
-                        accountId: _testValues.getString('accountId'),
-                        entityId: _testValues.getNumber()
-                    },
-                    {
-                        accountId: _testValues.getNumber(),
-                        entityId: _testValues.getNumber()
-                    }
-                ];
-
-                inputs.forEach((keys) => {
-                    const entity = _createEntity(RangeKeyEntity);
-                    const count = 10;
-                    const expected = _awsSdk.DynamoDB.Converter.input(keys).M;
-
-                    const resumeClause = _dynamoDbMock.mocks.resume;
-
-                    expect(resumeClause.stub).to.not.have.been.called;
-
-                    entity.list(keys, count);
-
-                    expect(resumeClause.stub).to.have.been.calledOnce;
-
-                    const resumeToken = resumeClause.stub.args[0][0];
-                    expect(resumeToken).to.deep.equal(expected);
-
-                    resumeClause.reset();
-                });
-            });
-
-            it('should not include the limit clause if the count value is undefined', () => {
+            inputs.forEach((count) => {
                 const entity = _createEntity(RangeKeyEntity);
                 const { keys } = _createInputs(entity);
-                const count = undefined;
 
                 const limitClause = _dynamoDbMock.mocks.limit;
 
@@ -827,537 +693,567 @@ describe('Entity', () => {
 
                 expect(limitClause.stub).to.not.have.been.called;
             });
+        });
 
-            it('should reject the promise if the list operation fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const queryMethod = _dynamoDbMock.mocks.query;
-                const message = 'something went wrong';
+        it('should return a promise when invoked', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
 
-                const { keys } = _createInputs(entity);
-                const ret = entity.list(keys);
+            const ret = entity.list(keys);
 
-                const [callback] = queryMethod.stub.args[0];
-                const error = new Error(message);
-                callback(error);
+            expect(ret).to.be.an('object');
+            expect(ret.then).to.be.a('function');
+        });
 
-                expect(ret)
-                    .to.be.rejectedWith(Error, message)
-                    .and.notify(done);
-            });
+        it('should invoke the query method with the correct payload', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys } = _createInputs(entity);
+            const queryMethod = _dynamoDbMock.mocks.query;
 
-            it('should resolve the promise if the list operation succeeds', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const queryMethod = _dynamoDbMock.mocks.query;
-                const expectedResponse = [];
+            expect(queryMethod.stub).to.not.have.been.called;
 
-                const { keys } = _createInputs(entity);
-                const ret = entity.list(keys);
+            entity.list(keys);
 
-                const [callback] = queryMethod.stub.args[0];
-                callback(null, expectedResponse);
+            expect(queryMethod.stub).to.have.been.calledOnce;
 
-                expect(ret)
-                    .to.be.fulfilled.then((response) => {
-                        expect(response).to.equal(expectedResponse);
-                    })
-                    .then(done, done);
-            });
+            const [callback] = queryMethod.stub.args[0];
+
+            expect(callback).to.be.a('function');
+        });
+
+        it('should reject the promise if the list operation fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const queryMethod = _dynamoDbMock.mocks.query;
+            const message = 'something went wrong';
+
+            const { keys } = _createInputs(entity);
+            const ret = entity.list(keys);
+
+            const [callback] = queryMethod.stub.args[0];
+            const error = new Error(message);
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(Error, message)
+                .and.notify(done);
+        });
+
+        it('should resolve the promise if the list operation succeeds', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const queryMethod = _dynamoDbMock.mocks.query;
+            const expectedResponse = {};
+
+            const { keys } = _createInputs(entity);
+            const ret = entity.list(keys);
+
+            const [callback] = queryMethod.stub.args[0];
+            callback(null, expectedResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response).to.equal(expectedResponse);
+                })
+                .then(done, done);
         });
     });
 
     describe('update()', () => {
-        describe('[input validation]', () => {
-            it('should throw an error if invoked without valid keys', () => {
-                const message = 'Invalid keys (arg #1)';
-                const inputs = _testValues.allButObject();
+        it('should throw an error if invoked without valid keys', () => {
+            const message = 'Invalid keys (arg #1)';
+            const inputs = _testValues.allButObject();
 
-                inputs.forEach((keys) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        entity.update(keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            it('should throw an error if invoked without valid update props', () => {
-                const message = 'Invalid update properties (arg #2)';
-                const inputs = _testValues.allButObject();
-
-                inputs.forEach((updateProps) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const { keys } = _createInputs(entity);
-                        entity.update(keys, updateProps);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            it('should throw an error if invoked without valid delete props', () => {
-                const message = 'Invalid delete properties (arg #3)';
-                const inputs = _testValues.allButObject();
-
-                inputs.forEach((deleteProps) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const { keys } = _createInputs(entity);
-                        const updateProps = {};
-                        entity.update(keys, updateProps, deleteProps);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            it('should throw an error if invoked without a valid version string', () => {
-                const message = 'Invalid version (arg #4)';
-                const inputs = _testValues.allButString('');
-
-                inputs.forEach((version) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const { keys } = _createInputs(entity);
-                        const updateProps = {};
-                        const deleteProps = {};
-                        entity.update(keys, updateProps, deleteProps, version);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
+            inputs.forEach((keys) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    entity.update(keys);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
         });
 
-        describe(
-            '[key validation]',
-            _getKeyValidationSuite((entity, keys) =>
-                entity.update(keys, {}, {}, _testValues.getString('version'))
-            )
-        );
+        it('should throw an error if invoked without valid update props', () => {
+            const message = 'Invalid update properties (arg #2)';
+            const inputs = _testValues.allButObject();
 
-        describe(
-            '[return value & client initialization]',
-            _getClientInitAndReturnValueSuite((entity) => {
-                const { keys } = _createInputs(entity);
-                const updateProps = {};
-                const deleteProps = {};
-                const version = _testValues.getString('version');
-                return entity.update(keys, updateProps, deleteProps, version);
-            })
-        );
-
-        describe('[method behavior]', () => {
-            it('should invoke the update and delete copiers to copy update and delete fields', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-                const updateCopierResults = entity._updateCopierResults;
-
-                const updateCopyMethod = entity.updateCopierMock.mocks.copy;
-                const deleteCopyMethod = entity.deleteCopierMock.mocks.copy;
-
-                expect(updateCopyMethod.stub).to.not.have.been.called;
-                expect(deleteCopyMethod.stub).to.not.have.been.called;
-
-                entity.update(keys, updateProps, deleteProps, version);
-
-                expect(updateCopyMethod.stub).to.have.been.calledOnce;
-                const [updateCopierInputs] = updateCopyMethod.stub.args[0];
-                expect(updateCopierInputs).to.deep.equal(updateProps);
-
-                expect(deleteCopyMethod.stub).to.have.been.calledOnce;
-                const [
-                    deleteCopierInputs,
-                    fieldsToUpdate,
-                    transform
-                ] = deleteCopyMethod.stub.args[0];
-                expect(deleteCopierInputs).to.deep.equal(deleteProps);
-                expect(fieldsToUpdate).to.equal(updateCopierResults);
-                expect(transform).to.be.a('function');
-
-                expect(transform()).to.equal(_dynamoDbMock.instance._DEL);
-            });
-
-            it('should complete with empty updated props if there are no update/delete props', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-                entity._updateCopierResults = {};
-                entity._deleteCopierResults = {};
-
-                const updateMethod = _dynamoDbMock.mocks.update;
-                expect(updateMethod.stub).to.not.have.been.called;
-                let actualResponse = null;
-                const ret = entity
-                    .update(keys, updateProps, deleteProps, version)
-                    .then((data) => {
-                        actualResponse = data;
-                    });
-
-                expect(ret)
-                    .to.be.fulfilled.then(() => {
-                        expect(updateMethod.stub).to.not.have.been.called;
-                        expect(actualResponse).to.deep.equal({
-                            keys,
-                            properties: [],
-                            __version: version
-                        });
-                    })
-                    .then(done, done);
-            });
-
-            it('should invoke the update method with the correct conditions and payload', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const audit = {
-                    username: _testValues.getString('username')
-                };
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-
-                const startTime = Date.now();
-                const updateMethod = _dynamoDbMock.mocks.update;
-                const whereClause = _dynamoDbMock.mocks.where;
-                const ifClause = _dynamoDbMock.mocks.if;
-                const eqClause = _dynamoDbMock.mocks.eq;
-                const returnClause = _dynamoDbMock.mocks.return;
-
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(ifClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
-                expect(returnClause.stub).to.not.have.been.called;
-                expect(updateMethod.stub).to.not.have.been.called;
-
-                entity.update(keys, updateProps, deleteProps, version, audit);
-
-                expect(updateMethod.stub).to.have.been.calledOnce;
-                expect(whereClause.stub).to.have.been.calledTwice;
-                expect(ifClause.stub).to.have.been.calledTwice;
-                expect(eqClause.stub.callCount).to.equal(4);
-                expect(returnClause.stub).to.have.been.calledOnce;
-
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-                expect(whereClause.stub.args[1][0]).to.equal('entityId');
-                expect(eqClause.stub.args[1][0]).to.equal(keys.entityId);
-                expect(ifClause.stub.args[0][0]).to.equal('__status');
-                expect(eqClause.stub.args[2][0]).to.equal('active');
-                expect(ifClause.stub.args[1][0]).to.equal('__version');
-                expect(eqClause.stub.args[3][0]).to.equal(version);
-                expect(returnClause.stub.args[0][0]).to.equal(
-                    _dynamoDbMock.instance.ALL_OLD
-                );
-
-                const [payload, callback] = updateMethod.stub.args[0];
-                const expectedPayload = Object.assign(
-                    {},
-                    entity._updateCopierResults,
-                    entity._deleteCopierResults
-                );
-
-                for (let prop in expectedPayload) {
-                    expect(payload[prop]).to.deep.equal(expectedPayload[prop]);
-                }
-                expect(payload.__version).to.be.a('string').and.not.be.empty;
-                expect(payload.__version).to.not.equal(version);
-
-                expect(payload.__updatedBy).to.equal(audit.username);
-                expect(payload.__updateDate).to.be.within(
-                    startTime,
-                    Date.now()
-                );
-                expect(callback).to.be.a('function');
-            });
-
-            it('should use the the default username if no audit information is specified', () => {
-                const inputs = _testValues.allButObject();
-
-                inputs.forEach((audit) => {
+            inputs.forEach((updateProps) => {
+                const wrapper = () => {
                     const entity = _createEntity(RangeKeyEntity);
-                    const updateMethod = _dynamoDbMock.mocks.update;
-                    const { keys, version } = _createInputs(entity);
-
-                    entity.update(keys, {}, {}, version, audit);
-                    const [payload] = updateMethod.stub.args[0];
-                    expect(payload.__updatedBy).to.equal('SYSTEM');
-                });
-            });
-
-            it('should not use the rangeKey in the query if the entity does not require one', () => {
-                const entity = _createEntity(HashKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
-
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
-
-                entity.update(keys, updateProps, deleteProps, version);
-
-                expect(whereClause.stub).to.have.been.calledOnce;
-                expect(eqClause.stub.callCount).to.equal(3);
-            });
-
-            it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-
-                const updateMethod = _dynamoDbMock.mocks.update;
-                const ret = entity.update(
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                );
-
-                const [, callback] = updateMethod.stub.args[0];
-                const error = new Error();
-                error.code = 'ConditionalCheckFailedException';
-                error.status = 400;
-                callback(error);
-
-                expect(ret)
-                    .to.be.rejectedWith(ConcurrencyControlError)
-                    .and.notify(done);
-            });
-
-            it('should reject the promise if the update operation fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-                const updateMethod = _dynamoDbMock.mocks.update;
-                const message = 'something went wrong';
-
-                const ret = entity.update(
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                );
-
-                const [, callback] = updateMethod.stub.args[0];
-                const error = new Error(message);
-                callback(error);
-
-                expect(ret)
-                    .to.be.rejectedWith(Error, message)
-                    .and.notify(done);
-            });
-
-            it('should resolve the promise if the update operation succeeds', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const {
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                } = _createInputs(entity);
-                const updateMethod = _dynamoDbMock.mocks.update;
-                const expectedResponse = {
-                    keys,
-                    properties: ['prop1', 'prop4']
+                    const { keys } = _createInputs(entity);
+                    entity.update(keys, updateProps);
                 };
-
-                const ret = entity.update(
-                    keys,
-                    updateProps,
-                    deleteProps,
-                    version
-                );
-
-                const [, callback] = updateMethod.stub.args[0];
-                callback(null, expectedResponse);
-
-                expect(ret)
-                    .to.be.fulfilled.then((response) => {
-                        expect(response.__version).to.be.a('string');
-                        expect(response.__version).to.not.be.empty;
-                        delete response.__version;
-
-                        expect(response).to.deep.equal(expectedResponse);
-                    })
-                    .then(done, done);
+                expect(wrapper).to.throw(ArgError, message);
             });
+        });
+
+        it('should throw an error if invoked without valid delete props', () => {
+            const message = 'Invalid delete properties (arg #3)';
+            const inputs = _testValues.allButObject();
+
+            inputs.forEach((deleteProps) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    const { keys, updateProps } = _createInputs(entity);
+                    entity.update(keys, updateProps, deleteProps);
+                };
+                expect(wrapper).to.throw(ArgError, message);
+            });
+        });
+
+        it('should throw an error if invoked without a valid version string', () => {
+            const message = 'Invalid version (arg #4)';
+            const inputs = _testValues.allButString('');
+
+            inputs.forEach((version) => {
+                const wrapper = () => {
+                    const entity = _createEntity(HashKeyEntity);
+                    const { keys, updateProps, deleteProps } = _createInputs(
+                        entity
+                    );
+                    entity.update(keys, updateProps, deleteProps, version);
+                };
+                expect(wrapper).to.throw(ArgError, message);
+            });
+        });
+
+        it("should initialize parameters by using the super's _initParams() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
+
+            expect(initParamsMethod.stub).to.not.have.been.called;
+
+            entity.update(keys, updateProps, deleteProps, version, audit);
+
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'update',
+                audit,
+                false
+            );
+        });
+
+        it('should set rangeKeyOptional=true if the entity does not require a range key', () => {
+            const entity = _createEntity(HashKeyEntity);
+            const { keys, version } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
+
+            expect(initParamsMethod.stub).to.not.have.been.called;
+
+            entity.update(keys, {}, {}, version, audit);
+
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'update',
+                audit,
+                true
+            );
+        });
+
+        it("should initialize the dynamodb client by using the super's _initClient() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+            const initClientMethod = _superSpy.mocks._initClient;
+
+            expect(initClientMethod.stub).to.not.have.been.called;
+
+            entity.update(keys, {}, {}, version);
+
+            expect(initClientMethod.stub).to.have.been.calledOnce;
+            expect(initClientMethod.stub).to.be.calledWithExactly(
+                keys.accountId,
+                keys.entityId
+            );
+        });
+
+        it('should apply checks for active record and optimistic concurrency verification', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+
+            const ifClause = _dynamoDbMock.mocks.if;
+            const eqClause = _dynamoDbMock.mocks.eq;
+            const returnClause = _dynamoDbMock.mocks.return;
+
+            expect(ifClause.stub).to.not.have.been.called;
+            expect(eqClause.stub).to.not.have.been.called;
+            expect(returnClause.stub).to.not.have.been.called;
+
+            entity.update(keys, updateProps, deleteProps, version);
+
+            expect(ifClause.stub).to.have.been.calledTwice;
+            expect(eqClause.stub).to.have.been.calledTwice;
+            expect(returnClause.stub).to.have.been.calledOnce;
+
+            expect(ifClause.stub.args[0][0]).to.equal('__status');
+            expect(eqClause.stub.args[0][0]).to.equal('active');
+            expect(ifClause.stub.args[1][0]).to.equal('__version');
+            expect(eqClause.stub.args[1][0]).to.equal(version);
+
+            expect(returnClause.stub.args[0][0]).to.equal(
+                _dynamoDbMock.instance.ALL_OLD
+            );
+        });
+
+        it('should invoke the update and delete copiers to copy update and delete fields', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+            const updateCopierResults = entity._updateCopierResults;
+
+            const updateCopyMethod = entity.updateCopierMock.mocks.copy;
+            const deleteCopyMethod = entity.deleteCopierMock.mocks.copy;
+
+            expect(updateCopyMethod.stub).to.not.have.been.called;
+            expect(deleteCopyMethod.stub).to.not.have.been.called;
+
+            entity.update(keys, updateProps, deleteProps, version);
+
+            expect(updateCopyMethod.stub).to.have.been.calledOnce;
+            const [updateCopierInputs] = updateCopyMethod.stub.args[0];
+            expect(updateCopierInputs).to.deep.equal(updateProps);
+
+            expect(deleteCopyMethod.stub).to.have.been.calledOnce;
+            const [
+                deleteCopierInputs,
+                fieldsToUpdate,
+                transform
+            ] = deleteCopyMethod.stub.args[0];
+            expect(deleteCopierInputs).to.deep.equal(deleteProps);
+            expect(fieldsToUpdate).to.equal(updateCopierResults);
+            expect(transform).to.be.a('function');
+
+            expect(transform()).to.equal(_dynamoDbMock.instance._DEL);
+        });
+
+        it('should return a promise when invoked', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+
+            const ret = entity.update(keys, updateProps, deleteProps, version);
+
+            expect(ret).to.be.an('object');
+            expect(ret.then).to.be.a('function');
+        });
+
+        it('should complete with empty updated props if there are no update/delete props', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+            entity._updateCopierResults = {};
+            entity._deleteCopierResults = {};
+
+            const updateMethod = _dynamoDbMock.mocks.update;
+            expect(updateMethod.stub).to.not.have.been.called;
+            let actualResponse = null;
+            const ret = entity
+                .update(keys, updateProps, deleteProps, version)
+                .then((data) => {
+                    actualResponse = data;
+                });
+
+            expect(ret)
+                .to.be.fulfilled.then(() => {
+                    expect(updateMethod.stub).to.not.have.been.called;
+                    expect(actualResponse).to.deep.equal({
+                        keys,
+                        properties: [],
+                        __version: version
+                    });
+                })
+                .then(done, done);
+        });
+
+        it('should invoke the update method with the correct conditions and payload', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+
+            const startTime = Date.now();
+            const updateMethod = _dynamoDbMock.mocks.update;
+
+            expect(updateMethod.stub).to.not.have.been.called;
+
+            entity.update(keys, updateProps, deleteProps, version);
+
+            expect(updateMethod.stub).to.have.been.calledOnce;
+
+            const [payload, callback] = updateMethod.stub.args[0];
+            const expectedPayload = Object.assign(
+                {},
+                entity._updateCopierResults,
+                entity._deleteCopierResults
+            );
+
+            for (let prop in expectedPayload) {
+                expect(payload[prop]).to.deep.equal(expectedPayload[prop]);
+            }
+            expect(payload.__version).to.be.a('string').and.not.be.empty;
+            expect(payload.__version).to.not.equal(version);
+
+            expect(payload.__updatedBy).to.equal(_superSpy._username);
+            expect(payload.__updateDate).to.be.within(startTime, Date.now());
+            expect(callback).to.be.a('function');
+        });
+
+        it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+
+            const updateMethod = _dynamoDbMock.mocks.update;
+            const ret = entity.update(keys, updateProps, deleteProps, version);
+
+            const [, callback] = updateMethod.stub.args[0];
+            const error = new Error();
+            error.code = 'ConditionalCheckFailedException';
+            error.status = 400;
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(ConcurrencyControlError)
+                .and.notify(done);
+        });
+
+        it('should reject the promise if the update operation fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+            const updateMethod = _dynamoDbMock.mocks.update;
+            const message = 'something went wrong';
+
+            const ret = entity.update(keys, updateProps, deleteProps, version);
+
+            const [, callback] = updateMethod.stub.args[0];
+            const error = new Error(message);
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(Error, message)
+                .and.notify(done);
+        });
+
+        it('should resolve the promise if the update operation succeeds', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, updateProps, deleteProps, version } = _createInputs(
+                entity
+            );
+            const updateMethod = _dynamoDbMock.mocks.update;
+            const expectedResponse = {
+                keys,
+                properties: ['prop1', 'prop4']
+            };
+
+            const ret = entity.update(keys, updateProps, deleteProps, version);
+
+            const [, callback] = updateMethod.stub.args[0];
+            callback(null, expectedResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response.__version).to.be.a('string');
+                    expect(response.__version).to.not.be.empty;
+                    delete response.__version;
+
+                    expect(response).to.deep.equal(expectedResponse);
+                })
+                .then(done, done);
         });
     });
 
     describe('delete()', () => {
-        describe('[input validation]', () => {
-            it('should throw an error if invoked without valid keys', () => {
-                const message = 'Invalid keys (arg #1)';
-                const inputs = _testValues.allButObject();
+        it('should throw an error if invoked without valid keys', () => {
+            const message = 'Invalid keys (arg #1)';
+            const inputs = _testValues.allButObject();
 
-                inputs.forEach((keys) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        entity.delete(keys);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
-            });
-
-            it('should throw an error if invoked without a valid version string', () => {
-                const message = 'Invalid version (arg #4)';
-                const inputs = _testValues.allButString('');
-
-                inputs.forEach((version) => {
-                    const wrapper = () => {
-                        const entity = _createEntity(HashKeyEntity);
-                        const { keys } = _createInputs(entity);
-                        entity.delete(keys, version);
-                    };
-                    expect(wrapper).to.throw(ArgError, message);
-                });
+            inputs.forEach((keys) => {
+                const wrapper = () => {
+                    const entity = _createEntity(RangeKeyEntity);
+                    entity.delete(keys);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
         });
 
-        describe(
-            '[key validation]',
-            _getKeyValidationSuite((entity, keys) =>
-                entity.delete(keys, _testValues.getString('version'))
-            )
-        );
+        it('should throw an error if invoked without a valid version string', () => {
+            const message = 'Invalid version (arg #2)';
+            const inputs = _testValues.allButString('');
 
-        describe(
-            '[return value & client initialization]',
-            _getClientInitAndReturnValueSuite((entity) => {
-                const { keys } = _createInputs(entity);
-                const version = _testValues.getString('version');
-                return entity.delete(keys, version);
-            })
-        );
-
-        describe('[method behavior]', () => {
-            it('should invoke the delete method with the the hash and range keys', () => {
-                const entity = _createEntity(RangeKeyEntity);
-                const { keys, version } = _createInputs(entity);
-
-                const deleteMethod = _dynamoDbMock.mocks.delete;
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
-                const ifClause = _dynamoDbMock.mocks.if;
-
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(ifClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
-                expect(deleteMethod.stub).to.not.have.been.called;
-
-                entity.delete(keys, version);
-
-                expect(deleteMethod.stub).to.have.been.calledOnce;
-                expect(whereClause.stub).to.have.been.calledTwice;
-                expect(ifClause.stub).to.have.been.calledTwice;
-                expect(eqClause.stub.callCount).to.equal(4);
-
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-                expect(whereClause.stub.args[1][0]).to.equal('entityId');
-                expect(eqClause.stub.args[1][0]).to.equal(keys.entityId);
-                expect(ifClause.stub.args[0][0]).to.equal('__status');
-                expect(eqClause.stub.args[2][0]).to.equal('active');
-                expect(ifClause.stub.args[1][0]).to.equal('__version');
-                expect(eqClause.stub.args[3][0]).to.equal(version);
-
-                const [callback] = deleteMethod.stub.args[0];
-
-                expect(callback).to.be.a('function');
+            inputs.forEach((version) => {
+                const wrapper = () => {
+                    const entity = _createEntity(HashKeyEntity);
+                    const { keys } = _createInputs(entity);
+                    entity.delete(keys, version);
+                };
+                expect(wrapper).to.throw(ArgError, message);
             });
+        });
 
-            it('should use only the hash key if the entity does not require a range key', () => {
-                const entity = _createEntity(HashKeyEntity);
-                const { keys, version } = _createInputs(entity);
+        it("should initialize parameters by using the super's _initParams() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-                const whereClause = _dynamoDbMock.mocks.where;
-                const eqClause = _dynamoDbMock.mocks.eq;
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-                expect(whereClause.stub).to.not.have.been.called;
-                expect(eqClause.stub).to.not.have.been.called;
+            entity.delete(keys, version, audit);
 
-                entity.delete(keys, version);
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'delete',
+                audit,
+                false
+            );
+        });
 
-                expect(whereClause.stub).to.have.been.calledOnce;
-                expect(eqClause.stub).to.have.been.calledThrice;
+        it('should set rangeKeyOptional=true if the entity does not require a range key', () => {
+            const entity = _createEntity(HashKeyEntity);
+            const { keys, version } = _createInputs(entity);
+            const audit = { username: _testValues.getString('username') };
+            const initParamsMethod = _superSpy.mocks._initParams;
 
-                expect(whereClause.stub.args[0][0]).to.equal('accountId');
-                expect(eqClause.stub.args[0][0]).to.equal(keys.accountId);
-            });
+            expect(initParamsMethod.stub).to.not.have.been.called;
 
-            it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const { keys, version } = _createInputs(entity);
+            entity.delete(keys, version, audit);
 
-                const deleteMethod = _dynamoDbMock.mocks.delete;
-                const ret = entity.delete(keys, version);
+            expect(initParamsMethod.stub).to.have.been.calledOnce;
+            expect(initParamsMethod.stub).to.be.calledWithExactly(
+                keys,
+                'delete',
+                audit,
+                true
+            );
+        });
 
-                const [callback] = deleteMethod.stub.args[0];
-                const error = new Error();
-                error.code = 'ConditionalCheckFailedException';
-                error.status = 400;
-                callback(error);
+        it("should initialize the dynamodb client by using the super's _initClient() method", () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+            const initClientMethod = _superSpy.mocks._initClient;
 
-                expect(ret)
-                    .to.be.rejectedWith(ConcurrencyControlError)
-                    .and.notify(done);
-            });
+            expect(initClientMethod.stub).to.not.have.been.called;
 
-            it('should reject the promise if the delete operation fails', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const deleteMethod = _dynamoDbMock.mocks.delete;
-                const message = 'something went wrong';
+            entity.delete(keys, version);
 
-                const { keys, version } = _createInputs(entity);
-                const ret = entity.delete(keys, version);
+            expect(initClientMethod.stub).to.have.been.calledOnce;
+            expect(initClientMethod.stub).to.be.calledWithExactly(
+                keys.accountId,
+                keys.entityId
+            );
+        });
 
-                const [callback] = deleteMethod.stub.args[0];
-                const error = new Error(message);
-                callback(error);
+        it('should apply checks for active record and optimistic concurrency verification', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
 
-                expect(ret)
-                    .to.be.rejectedWith(Error, message)
-                    .and.notify(done);
-            });
+            const ifClause = _dynamoDbMock.mocks.if;
+            const eqClause = _dynamoDbMock.mocks.eq;
 
-            it('should resolve the promise if the delete operation succeeds', (done) => {
-                const entity = _createEntity(RangeKeyEntity);
-                const deleteMethod = _dynamoDbMock.mocks.delete;
-                const expectedResponse = {};
+            expect(ifClause.stub).to.not.have.been.called;
+            expect(eqClause.stub).to.not.have.been.called;
 
-                const { keys, version } = _createInputs(entity);
-                const ret = entity.delete(keys, version);
+            entity.delete(keys, version);
 
-                const [callback] = deleteMethod.stub.args[0];
-                callback(null, expectedResponse);
+            expect(ifClause.stub).to.have.been.calledTwice;
+            expect(eqClause.stub).to.have.been.calledTwice;
 
-                expect(ret)
-                    .to.be.fulfilled.then((response) => {
-                        expect(response).to.equal(expectedResponse);
-                    })
-                    .then(done, done);
-            });
+            expect(ifClause.stub.args[0][0]).to.equal('__status');
+            expect(eqClause.stub.args[0][0]).to.equal('active');
+            expect(ifClause.stub.args[1][0]).to.equal('__version');
+            expect(eqClause.stub.args[1][0]).to.equal(version);
+        });
+
+        it('should return a promise when invoked', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+
+            const ret = entity.delete(keys, version);
+
+            expect(ret).to.be.an('object');
+            expect(ret.then).to.be.a('function');
+        });
+
+        it('should invoke the delete method with the the hash and range keys', () => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+
+            const deleteMethod = _dynamoDbMock.mocks.delete;
+
+            expect(deleteMethod.stub).to.not.have.been.called;
+
+            entity.delete(keys, version);
+
+            expect(deleteMethod.stub).to.have.been.calledOnce;
+
+            const [callback] = deleteMethod.stub.args[0];
+            expect(callback).to.be.a('function');
+        });
+
+        it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const { keys, version } = _createInputs(entity);
+
+            const deleteMethod = _dynamoDbMock.mocks.delete;
+            const ret = entity.delete(keys, version);
+
+            const [callback] = deleteMethod.stub.args[0];
+            const error = new Error();
+            error.code = 'ConditionalCheckFailedException';
+            error.status = 400;
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(ConcurrencyControlError)
+                .and.notify(done);
+        });
+
+        it('should reject the promise if the delete operation fails', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const deleteMethod = _dynamoDbMock.mocks.delete;
+            const message = 'something went wrong';
+
+            const { keys, version } = _createInputs(entity);
+            const ret = entity.delete(keys, version);
+
+            const [callback] = deleteMethod.stub.args[0];
+            const error = new Error(message);
+            callback(error);
+
+            expect(ret)
+                .to.be.rejectedWith(Error, message)
+                .and.notify(done);
+        });
+
+        it('should resolve the promise if the delete operation succeeds', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const deleteMethod = _dynamoDbMock.mocks.delete;
+            const expectedResponse = {};
+
+            const { keys, version } = _createInputs(entity);
+            const ret = entity.delete(keys, version);
+
+            const [callback] = deleteMethod.stub.args[0];
+            callback(null, expectedResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response).to.equal(expectedResponse);
+                })
+                .then(done, done);
         });
     });
 });
