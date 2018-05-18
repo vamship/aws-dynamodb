@@ -8,6 +8,7 @@ const {
     DuplicateRecordError,
     ConcurrencyControlError
 } = require('@vamship/error-types').data;
+const _dynamoDb = require('@awspilot/dynamodb');
 
 const Entity = require('./entity');
 
@@ -55,6 +56,9 @@ class SimpleEntity extends Entity {
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
      *         outcome of the create operation.
+     *
+     * @throws {DuplicateRecordError} Thrown if a record with the specified keys
+     *         already exists in the database.
      */
     create(keys, props, audit) {
         _argValidator.checkObject(props, 'Invalid props (arg #2)');
@@ -196,6 +200,10 @@ class SimpleEntity extends Entity {
      * @return {Promise} A promise that will be rejected/resolved based on the
      *         outcome of the create operation. If resolved, the data will
      *         contain a list of updated and deleted fields.
+     *
+     * @throws {ConcurrencyControlError} Thrown if a concurrency check fails -
+     *         i.e., the record that is being updated was changed since the last
+     *         time it was read.
      */
     update(keys, updateProps, deleteProps, version, audit) {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');
@@ -230,10 +238,11 @@ class SimpleEntity extends Entity {
         logger.trace('Update payload', { propsToUpdate });
 
         logger.trace('Determining properties to delete');
+        const dynamoDbClient = _dynamoDb();
         propsToUpdate = this._deleteCopier.copy(
             deleteProps,
             propsToUpdate,
-            (property, value) => client.del()
+            (property, value) => dynamoDbClient.del()
         );
         logger.trace('Update and delete payload', { propsToUpdate });
 
@@ -295,6 +304,10 @@ class SimpleEntity extends Entity {
      *
      * @return {Promise} A promise that will be rejected/resolved based on the
      *         outcome of the create operation.
+     *
+     * @throws {ConcurrencyControlError} Thrown if a concurrency check fails -
+     *         i.e., the record that is being deleted was changed since the last
+     *         time it was read.
      */
     delete(keys, version, audit) {
         _argValidator.checkObject(keys, 'Invalid keys (arg #1)');

@@ -125,7 +125,6 @@ describe('SimpleEntity', () => {
     let _superSpy = null;
     let _dynamoDbMock = null;
     let _awsSdkMock = null;
-    let _loggerMock = null;
 
     beforeEach(() => {
         _dynamoDbMock = new ObjectMock()
@@ -142,6 +141,7 @@ describe('SimpleEntity', () => {
             .addMock('query')
             .addMock('insert')
             .addMock('get');
+        _dynamoDbMock.instance._DEL = _testValues.getString('_DEL');
 
         const resumeToken = {};
         const converter = new ObjectMock().addMock('input', {
@@ -156,22 +156,22 @@ describe('SimpleEntity', () => {
             }
         };
 
-        _loggerMock = new ObjectMock().addMock(
+        const loggerMock = new ObjectMock().addMock(
             'getLogger',
-            () => _loggerMock.__loggerInstance
+            () => loggerMock.__loggerInstance
         );
-        _loggerMock.__loggerInstance = LOG_METHODS.reduce((result, method) => {
+        loggerMock.__loggerInstance = LOG_METHODS.reduce((result, method) => {
             result[method] = _sinon.spy();
             return result;
         }, {});
-        _loggerMock.__loggerInstance.child = _sinon
+        loggerMock.__loggerInstance.child = _sinon
             .stub()
-            .returns(_loggerMock.__loggerInstance);
+            .returns(loggerMock.__loggerInstance);
 
         const initParamsFake = function(keys, action, audit) {
             return {
                 username: _superSpy._username,
-                logger: _loggerMock.__loggerInstance,
+                logger: loggerMock.__loggerInstance,
                 hashKey: keys.accountId,
                 rangeKey: keys.entityId
             };
@@ -187,6 +187,7 @@ describe('SimpleEntity', () => {
         _superSpy.inject();
 
         SimpleEntity.__set__('_awsSdk', _awsSdkMock);
+        SimpleEntity.__set__('_dynamoDb', _dynamoDbMock.ctor);
     });
 
     afterEach(() => {
