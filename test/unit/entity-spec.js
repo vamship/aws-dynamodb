@@ -128,10 +128,12 @@ describe('Entity', () => {
             const username = _testValues.getString('username');
             const logger = _loggerMock.__loggerInstance;
             const awsRegion = _testValues.getString('awsRegion');
+            const awsCredentials = {};
             const options = {
                 logger,
                 awsRegion,
-                username
+                username,
+                awsCredentials
             };
             const entity = new Entity(options);
 
@@ -146,6 +148,7 @@ describe('Entity', () => {
             //NOTE: Inspecting private members
             expect(entity._username).to.equal(username);
             expect(entity._awsRegion).to.equal(awsRegion);
+            expect(entity._awsCredentials).to.equal(awsCredentials);
 
             expect(entity._logger).to.equal(logger);
 
@@ -213,7 +216,7 @@ describe('Entity', () => {
             });
         });
 
-        it('should leave the AWS region as undefined if the options does not define one', () => {
+        it('should leave the AWS region as undefined if the options does not define a valid one', () => {
             const inputs = _testValues.allButString('');
 
             inputs.forEach((awsRegion) => {
@@ -222,6 +225,18 @@ describe('Entity', () => {
 
                 const entity = new Entity(options);
                 expect(entity._awsRegion).to.be.undefined;
+            });
+        });
+
+        it('should leave the AWS credentials as undefined if the options does not define a valid one', () => {
+            const inputs = _testValues.allButObject();
+
+            inputs.forEach((awsCredentials) => {
+                const options = _createOptions();
+                options.awsCredentials = awsCredentials;
+
+                const entity = new Entity(options);
+                expect(entity._awsCredentials).to.be.undefined;
             });
         });
     });
@@ -495,8 +510,10 @@ describe('Entity', () => {
     describe('_initClient()', () => {
         it('should initialize the dynamodb client using the AWS SDK', () => {
             const awsRegion = _testValues.getString('awsRegion');
+            const awsCredentials = {};
             const entity = _createEntity(RangeKeyEntity, {
-                awsRegion
+                awsRegion,
+                awsCredentials
             });
             const awsDynamoDbCtor = _awsSdkMock.mocks.DynamoDB;
 
@@ -508,7 +525,8 @@ describe('Entity', () => {
             expect(awsDynamoDbCtor.stub).to.have.been.calledOnce;
             expect(awsDynamoDbCtor.stub).to.have.been.calledWithNew;
             expect(awsDynamoDbCtor.stub.args[0][0]).to.deep.equal({
-                region: awsRegion
+                region: awsRegion,
+                credentials: awsCredentials
             });
             expect(_dynamoDbMock.ctor).to.have.been.calledOnce;
             expect(_dynamoDbMock.ctor).to.have.been.calledWith(

@@ -52,6 +52,9 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  *           defined by the execution environment. See
  *           [AWS DynamoDB documentation]{@link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB.html#constructor-property}
  *           for more information.
+ * @property {Object} [awsCredentials=undefined] Credentials that will allow the
+ *           entity to connect to DynamoDB. This must be an instance of
+ *           [AWS.Credentials]{@link https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/Credentials.html}.
  */
 /**
  * A set of keys that uniquely identify the entity record in the table. This
@@ -124,10 +127,10 @@ const DEFAULT_COPIER = new SelectiveCopy([]);
  * This class is intended to serve as a base class for specialized entity
  * classes that will implement multiple properties on the base class, including,
  * but not limited to [<b>tableName</b>]{@link Entity#tableName},
- * [<b>hashKey</b>]{@link Entity#hashKey},
- * [<b>rangeKey</b>]{@link Entity#rangeKey} (optional),
- * [<b>updateProps</b>]{@link Entity#updateProps}, and
- * [<b>updateProps</b>]{@link Entity#deleteProps}.
+ * [<b>hashKeyName</b>]{@link Entity#hashKeyName},
+ * [<b>rangeKeyName</b>]{@link Entity#rangeKeyName} (optional),
+ * [<b>_updateCopier</b>]{@link Entity#_updateCopier}, and
+ * [<b>_deleteCopier</b>]{@link Entity#_deleteCopier}.
  * </li>
  *
  * <li> Provides utility methods for key validation, initialization of a
@@ -142,7 +145,7 @@ class Entity {
      */
     constructor(options) {
         options = Object.assign({}, options);
-        let { username, logger, awsRegion } = options;
+        let { username, logger, awsRegion, awsCredentials } = options;
         let isLoggerValid = LOG_METHODS.reduce((result, method) => {
             return result && _argValidator.checkFunction(logger[method]);
         }, _argValidator.checkObject(logger));
@@ -156,11 +159,15 @@ class Entity {
         if (!_argValidator.checkString(awsRegion)) {
             awsRegion = undefined;
         }
+        if (!_argValidator.checkObject(awsCredentials)) {
+            awsCredentials = undefined;
+        }
         this.__logger = logger.child({
             entity: this.tableName
         });
         this._username = username;
         this._awsRegion = awsRegion;
+        this._awsCredentials = awsCredentials;
     }
 
     /**
@@ -317,7 +324,8 @@ class Entity {
     _initClient(hashKey, rangeKey) {
         let client = _dynamoDb(
             new _awsSdk.DynamoDB({
-                region: this._awsRegion
+                region: this._awsRegion,
+                credentials: this._awsCredentials
             })
         ).table(this.tableName);
         if (typeof hashKey !== 'undefined') {
