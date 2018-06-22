@@ -8,6 +8,10 @@ The primary export from this library is a simplified entity with an opinionated
 implementation of CRUD operations, along with a base class that provides utility
 methods allowing for customized implementations.
 
+## API Documentation
+
+API documentation can be found [here](https://vamship.github.io/aws-dynamodb).
+
 # Motivation
 
 [AWS DynamoDB](https://aws.amazon.com/dynamodb) is AWS' hosted
