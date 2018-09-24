@@ -177,11 +177,11 @@ entity
 
 `SimpleEntity` provides pre defined methods for the following actions:
 
-*   Create entity
-*   Lookup entity
-*   List entities
-*   Update entity
-*   Delete entity
+-   Create entity
+-   Lookup entity
+-   List entities
+-   Update entity
+-   Delete entity
 
 Where applicable, each method supports audit logging, optmistic concurrency
 control and logical deletes. The child class can override any (or all) of these
