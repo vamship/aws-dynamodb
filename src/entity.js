@@ -422,7 +422,7 @@ class Entity {
      * @type {String}
      */
     get tableName() {
-        return;
+        return undefined;
     }
 
     /**
@@ -431,7 +431,7 @@ class Entity {
      * @type {String}
      */
     get hashKeyName() {
-        return;
+        return undefined;
     }
 
     /**
@@ -440,7 +440,7 @@ class Entity {
      * @type {String}
      */
     get rangeKeyName() {
-        return;
+        return undefined;
     }
 }
 
