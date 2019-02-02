@@ -10,8 +10,8 @@
     "author": "Vamshi K Ponnapalli <vamshi.ponnapalli@gmail.com>",
     "license": "MIT",
     "devDependencies": {
-        "@vamship/grunt-utils": "^1.2.0",
-        "@vamship/test-utils": "^2.2.0",
+        "@vamship/grunt-utils": "^1.2.1",
+        "@vamship/test-utils": "^2.2.2",
         "chai": "^4.2.0",
         "chai-as-promised": "^7.1.1",
         "docdash": "^1.0.2",
@@ -27,15 +27,15 @@
         "load-grunt-tasks": "^4.0.0",
         "mocha": "^5.2.0",
         "rewire": "^4.0.1",
-        "sinon": "^7.2.2",
+        "sinon": "^7.2.3",
         "sinon-chai": "^3.3.0"
     },
     "dependencies": {
-        "@awspilot/dynamodb": "^1.2.8",
-        "@vamship/arg-utils": "^2.2.0",
-        "@vamship/error-types": "^1.5.0",
-        "@vamship/logger": "^4.0.0",
-        "aws-sdk": "^2.390.0",
+        "@awspilot/dynamodb": "^1.2.9",
+        "@vamship/arg-utils": "^2.2.1",
+        "@vamship/error-types": "^1.5.1",
+        "@vamship/logger": "^4.0.1",
+        "aws-sdk": "^2.395.0",
         "bluebird": "^3.5.3",
         "selective-copy": "^0.2.0",
         "shortid": "^2.2.14"
