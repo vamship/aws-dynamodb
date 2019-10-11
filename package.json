@@ -12,6 +12,7 @@
     "license": "MIT",
     "devDependencies": {
         "@vamship/build-utils": "0.0.11",
+        "@vamship/logger": "^4.2.3",
         "@vamship/test-utils": "^2.4.6",
         "ansi-colors": "^4.1.1",
         "chai": "^4.2.0",
@@ -29,11 +30,13 @@
         "@awspilot/dynamodb": "^1.5.0",
         "@vamship/arg-utils": "^2.4.3",
         "@vamship/error-types": "^1.7.4",
-        "@vamship/logger": "^4.2.3",
         "aws-sdk": "^2.547.0",
         "bluebird": "^3.7.0",
         "selective-copy": "^0.2.0",
         "shortid": "^2.2.15"
+    },
+    "peerDependencies": {
+        "@vamship/logger": "^4.2.3"
     },
     "repository": {
         "type": "git",
