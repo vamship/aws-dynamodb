@@ -97,7 +97,7 @@ class SimpleEntity extends Entity {
     }
 
     /**
-     * Returns an existing entity from the dynamodb table.
+     * Returns an existing, active entity from the dynamodb table.
      *
      * @param {EntityKeys} keys A set of key(s) that uniquely identify the
      *        entity record in the table.
@@ -123,12 +123,21 @@ class SimpleEntity extends Entity {
         logger.trace('Initializing DynamoDB client');
         let client = this._initClient(hashKey, rangeKey);
 
-        logger.trace('Adding query conditions');
-        client = client.if('__status').eq('active');
-
         // logger.trace('Looking up entity record');
         const action = Promise.promisify(client.get.bind(client));
-        return this._execQuery(action, logger);
+        return this._execQuery(action, logger).then((results) => {
+            if (results && results['__status'] !== 'active') {
+                return {};
+            }
+
+            return results;
+        }).catch((e) => {
+            const errMsg = 'Error executing lookup request';
+
+            logger.error(errMsg);
+            logger.trace(e);
+            throw e;
+        });
     }
 
     /**
