@@ -468,25 +468,6 @@ describe('SimpleEntity', () => {
             );
         });
 
-        it('should apply a filter to check if the record is active', () => {
-            const entity = _createEntity(RangeKeyEntity);
-            const { keys } = _createInputs(entity);
-
-            const ifClause = _dynamoDbMock.mocks.if;
-            const eqClause = _dynamoDbMock.mocks.eq;
-
-            expect(ifClause.stub).to.not.have.been.called;
-            expect(eqClause.stub).to.not.have.been.called;
-
-            entity.lookup(keys);
-
-            expect(ifClause.stub).to.have.been.calledOnce;
-            expect(ifClause.stub).to.have.been.calledWithExactly('__status');
-
-            expect(eqClause.stub).to.have.been.calledOnce;
-            expect(eqClause.stub).to.have.been.calledWithExactly('active');
-        });
-
         it('should return a promise when invoked', () => {
             const entity = _createEntity(RangeKeyEntity);
             const { keys } = _createInputs(entity);
@@ -530,10 +511,29 @@ describe('SimpleEntity', () => {
                 .and.notify(done);
         });
 
+        it('should resolve to an empty object if the lookup operation yields non-active record', (done) => {
+            const entity = _createEntity(RangeKeyEntity);
+            const getMethod = _dynamoDbMock.mocks.get;
+            const apiResponse = { __status: _testValues.getString() };
+            const expectedResponse = { };
+
+            const { keys } = _createInputs(entity);
+            const ret = entity.lookup(keys);
+
+            const [callback] = getMethod.stub.args[0];
+            callback(null, apiResponse);
+
+            expect(ret)
+                .to.be.fulfilled.then((response) => {
+                    expect(response).to.deep.equal(expectedResponse);
+                })
+                .then(done, done);
+        });
+
         it('should resolve the promise if the lookup operation succeeds', (done) => {
             const entity = _createEntity(RangeKeyEntity);
             const getMethod = _dynamoDbMock.mocks.get;
-            const expectedResponse = {};
+            const expectedResponse = { __status: 'active', someField: true };
 
             const { keys } = _createInputs(entity);
             const ret = entity.lookup(keys);
@@ -543,7 +543,7 @@ describe('SimpleEntity', () => {
 
             expect(ret)
                 .to.be.fulfilled.then((response) => {
-                    expect(response).to.equal(expectedResponse);
+                    expect(response).to.deep.equal(expectedResponse);
                 })
                 .then(done, done);
         });

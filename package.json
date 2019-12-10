@@ -1,6 +1,6 @@
 {
     "name": "@vamship/aws-dynamodb",
-    "version": "1.4.3",
+    "version": "1.4.5",
     "description": "Library that provides easy abstractions to perform common operations on AWS DynamoDB",
     "main": "src/index.js",
     "scripts": {
@@ -9,6 +9,12 @@
     },
     "keywords": [],
     "author": "Vamshi K Ponnapalli <vamshi.ponnapalli@gmail.com>",
+    "contributors": [
+        {
+            "name": "Onaje K Baxley",
+            "email": "onaje.baxley@gmail.com"
+        }
+    ],
     "license": "MIT",
     "devDependencies": {
         "@vamship/build-utils": "0.0.11",
