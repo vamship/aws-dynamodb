@@ -515,7 +515,7 @@ describe('SimpleEntity', () => {
             const entity = _createEntity(RangeKeyEntity);
             const getMethod = _dynamoDbMock.mocks.get;
             const apiResponse = { __status: _testValues.getString() };
-            const expectedResponse = { };
+            const expectedResponse = {};
 
             const { keys } = _createInputs(entity);
             const ret = entity.lookup(keys);

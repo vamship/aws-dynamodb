@@ -125,19 +125,21 @@ class SimpleEntity extends Entity {
 
         // logger.trace('Looking up entity record');
         const action = Promise.promisify(client.get.bind(client));
-        return this._execQuery(action, logger).then((results) => {
-            if (results && results['__status'] !== 'active') {
-                return {};
-            }
+        return this._execQuery(action, logger)
+            .then((results) => {
+                if (results && results['__status'] !== 'active') {
+                    return {};
+                }
 
-            return results;
-        }).catch((e) => {
-            const errMsg = 'Error executing lookup request';
+                return results;
+            })
+            .catch((e) => {
+                const errMsg = 'Error executing lookup request';
 
-            logger.error(errMsg);
-            logger.trace(e);
-            throw e;
-        });
+                logger.error(errMsg);
+                logger.trace(e);
+                throw e;
+            });
     }
 
     /**
