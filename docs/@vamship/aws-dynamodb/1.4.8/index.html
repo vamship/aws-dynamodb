@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>Home - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="Entity.html">Entity</a><ul class='methods'><li data-type='method'><a href="Entity.html#_execQuery">_execQuery</a></li><li data-type='method'><a href="Entity.html#_initClient">_initClient</a></li><li data-type='method'><a href="Entity.html#_initParams">_initParams</a></li></ul></li><li><a href="SimpleEntity.html">SimpleEntity</a><ul class='methods'><li data-type='method'><a href="SimpleEntity.html#create">create</a></li><li data-type='method'><a href="SimpleEntity.html#delete">delete</a></li><li data-type='method'><a href="SimpleEntity.html#list">list</a></li><li data-type='method'><a href="SimpleEntity.html#lookup">lookup</a></li><li data-type='method'><a href="SimpleEntity.html#update">update</a></li></ul></li></ul><h3>Externals</h3><ul><li><a href="external-DynamoDbClient.html">DynamoDbClient</a></li><li><a href="external-ErrorTypes.html">ErrorTypes</a></li><li><a href="external-Logger.html">Logger</a></li><li><a href="external-SelectiveCopy.html">SelectiveCopy</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<div id="main">
+    
+
+    
+
+
+
+    
+
+
+    <section class="package">
+        <h3> </h3>		
+    </section>
+
+
+
+
+
+
+
+
+
+    
+
+
+
+    <section class="readme">
+        <article><h1>@vamship/aws-dynamodb</h1>
+<p><em>Extensible utilities that include an entity that provides CRUD operations
+against DynamoDB tables with useful features such as logical deletes and
+optimistic concurrency locking.</em></p>
+<p>The primary export from this library is a simplified entity with an opinionated
+implementation of CRUD operations, along with a base class that provides utility
+methods allowing for customized implementations.</p>
+<h2>API Documentation</h2>
+<p>API documentation can be found <a href="https://vamship.github.io/aws-dynamodb">here</a>.</p>
+<h1>Motivation</h1>
+<p><a href="https://aws.amazon.com/dynamodb">AWS DynamoDB</a> is AWS' hosted
+<a href="https://en.wikipedia.org/wiki/NoSQL">NoSQL</a> database service that works very
+well for several data storage applications. As with all NoSQL applications,
+DynamoDB trades off elasticity and flexibility for features that are provided
+by traditional SQL stores, such as <a href="https://en.wikipedia.org/wiki/ACID">ACID</a>.</p>
+<p>Applications that use NoSQL stores typically account for the lack of these
+features by either accepting their limitations, or by desigining some of these
+capabilities into the application code.</p>
+<p>There are well understood design patterns for some of these features, such as
+<a href="https://en.wikipedia.org/wiki/Optimistic_concurrency_control">Optimistic Concurrency Control</a>,
+that can be implemented for DynamoDB. When building multiple application NoSQL
+based applcations, it becomes apparent that these common design patterns appear
+repeatedly for each table that is used within the application.</p>
+<p>This library attempts to alleviate some of these challenges by providing an
+entity class that represents a single DynamoDB table, with CRUD implementations
+that support optimistic concurrency control and logical deletes. Methods can be
+overridden where necessary, or, if a completely different implementation is
+desired, a base <em>Entity</em> with useful validations and utility functions can be
+used to develop a custom entity class.</p>
+<h2>Installation</h2>
+<p>This library can be installed using npm:</p>
+<pre class="prettyprint source"><code>npm install @vamship/aws-dynamodb
+</code></pre>
+<h2>Usage</h2>
+<h3>Using SimpleEntity to perform basic database operations</h3>
+<pre class="prettyprint source"><code>const { SimpleEntity } = require('@vamship/simple-entity');
+const SelectiveCopy = require('selective-copy');
+
+// Property called &quot;count&quot; can be updated, but not deleted.
+// Property called &quot;tag&quot; can be deleted, but not updated
+const UPDATE_PROPS = new SelectiveCopy(['count']);
+const DELETE_PROPS = new SelectiveCopy(['tag']);
+
+/**
+ * Custom entity class for a specific dynamodb table called &quot;my-table&quot;, with
+ * a hash key column called &quot;myHashKey&quot; and a range key column called
+ * &quot;myRangeKey&quot;
+ *
+ * The _updateCopier and _deleteCopier properties define what properties are
+ * updatable and deletable on the entity record.
+ */
+class MyEntity extends SimpleEntity {
+    constructor(options) {
+        super(options);
+    }
+
+    get tableName() {
+        return 'vamship-test_entity';
+    }
+
+    get hashKeyName() {
+        return 'accountId';
+    }
+
+    get rangeKeyName() {
+        return 'entityId';
+    }
+
+    get _updateCopier() {
+        return UPDATE_PROPS;
+    }
+
+    get _deleteCopier() {
+        return DELETE_PROPS;
+    }
+}
+
+// See class documentation for possible values that can be included in the
+// options object.
+const options = {
+    awsRegion: 'us-east-1'
+};
+
+// Instantiate and use the entity class.
+const entity = new MyEntity(options);
+
+// Define record keys
+const keys = {
+    accountId: 'my-account',
+    entityId: 'my-entity-id'
+};
+
+// Define a new data record.
+const props = {
+    tag: 'my-tag',
+    count: Math.floor(Math.random() * 100),
+    list: ['apple', 'orange', 'pear']
+};
+
+// Define audit information to be included with the record (this is optional).
+const audit = {
+    username: 'joe'
+};
+
+// Create the record in the database.
+entity
+    .create(keys, props, keys)
+    .then(() => {
+        console.log('Record created successfully');
+    })
+    .then(() => {
+        // Retrieve a list of records from the database
+        return entity.list({ accountId: keys.accountId }).then((data) => {
+            console.log('Record list retrieved successfully');
+            console.log(data);
+            return data.find(({ accountId, entityId }) => {
+                return (
+                    accountId === keys.accountId && entityId === keys.entityId
+                );
+            });
+        });
+    })
+    .then((record) => {
+        const updateProps = {
+            count: record.count + 10 + Math.floor(Math.random() * 10)
+        };
+
+        const deleteProps = {
+            tag: 'value does not matter' // The value does not matter.
+        };
+
+        // Update an existing record in the database.
+        // Note that the version field is obtained by querying the record in the
+        // database, and is used to enforce concurrency control
+        return entity
+            .update(keys, updateProps, deleteProps, record.__version)
+            .then(() => {
+                console.log('Record updated successfully');
+            });
+    })
+    .then(() => {
+        // Retrieve the record from the database.
+        return entity.lookup(keys, audit).then((record) => {
+            console.log('Record retrieved successfully');
+            console.log(record);
+            return record;
+        });
+    })
+    .then((record) => {
+        // Delete an existing record from the database
+        entity.delete(keys, record.__version).then(() => {
+            console.log('Record deleted successfully');
+        });
+    })
+    .catch((err) => {
+        console.log(err);
+        console.log('Aborting due to errors');
+    });
+</code></pre>
+<p><code>SimpleEntity</code> provides pre defined methods for the following actions:</p>
+<ul>
+<li>Create entity</li>
+<li>Lookup entity</li>
+<li>List entities</li>
+<li>Update entity</li>
+<li>Delete entity</li>
+</ul>
+<p>Where applicable, each method supports audit logging, optmistic concurrency
+control and logical deletes. The child class can override any (or all) of these
+methods to provide different implementations as needed.</p></article>
+    </section>
+
+
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a> on Tue Jan 14 2020 10:18:17 GMT-0500 (Eastern Standard Time) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
