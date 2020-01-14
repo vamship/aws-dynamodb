@@ -22,6 +22,7 @@ const builders = [
     { build: taskBuilders.format },
     { build: taskBuilders.lint },
     { build: taskBuilders.build },
+    { build: taskBuilders.docs },
     { build: taskBuilders.package },
     { build: taskBuilders.package, options: { types: true } },
     { build: taskBuilders.publish },

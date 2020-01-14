@@ -17,7 +17,7 @@
     ],
     "license": "MIT",
     "devDependencies": {
-        "@vamship/build-utils": "0.0.17",
+        "@vamship/build-utils": "0.1.0",
         "@vamship/logger": "^4.2.4",
         "@vamship/test-utils": "^2.4.7",
         "ansi-colors": "^4.1.1",
@@ -25,6 +25,7 @@
         "chai-as-promised": "^7.1.1",
         "docdash": "^1.1.1",
         "gulp": "^4.0.2",
+        "gulp-jsdoc3": "^2.0.0",
         "mocha": "^7.0.0",
         "nyc": "^15.0.0",
         "rewire": "^4.0.1",
