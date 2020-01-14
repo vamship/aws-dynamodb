@@ -7,7 +7,12 @@
         "all": "gulp --series format lint test-unit clean",
         "test": "gulp test-unit"
     },
-    "files": ["package.json", "LICENSE", "README.md", "src/**/*"],
+    "files": [
+        "package.json",
+        "LICENSE",
+        "README.md",
+        "src/**/*"
+    ],
     "keywords": [],
     "author": "Vamshi K Ponnapalli <vamshi.ponnapalli@gmail.com>",
     "contributors": [
@@ -18,9 +23,9 @@
     ],
     "license": "MIT",
     "devDependencies": {
-        "@vamship/build-utils": "0.1.0",
-        "@vamship/logger": "^4.2.4",
-        "@vamship/test-utils": "^2.4.7",
+        "@vamship/build-utils": "0.1.1",
+        "@vamship/logger": "^4.2.5",
+        "@vamship/test-utils": "^2.4.8",
         "ansi-colors": "^4.1.1",
         "chai": "^4.2.0",
         "chai-as-promised": "^7.1.1",
@@ -35,15 +40,15 @@
     },
     "dependencies": {
         "@awspilot/dynamodb": "^2.0.0",
-        "@vamship/arg-utils": "^2.4.4",
-        "@vamship/error-types": "^1.7.6",
-        "aws-sdk": "^2.601.0",
+        "@vamship/arg-utils": "^2.4.5",
+        "@vamship/error-types": "^1.7.7",
+        "aws-sdk": "^2.602.0",
         "bluebird": "^3.7.2",
         "selective-copy": "^0.2.0",
         "shortid": "^2.2.15"
     },
     "peerDependencies": {
-        "@vamship/logger": "^4.2.4"
+        "@vamship/logger": "^4.2.5"
     },
     "repository": {
         "type": "git",
