@@ -23,31 +23,31 @@
     ],
     "license": "MIT",
     "devDependencies": {
-        "@vamship/build-utils": "0.2.0",
-        "@vamship/logger": "^4.2.6",
-        "@vamship/test-utils": "^2.4.9",
+        "@vamship/build-utils": "0.3.2",
+        "@vamship/logger": "^4.2.7",
+        "@vamship/test-utils": "^2.4.10",
         "ansi-colors": "^4.1.1",
         "chai": "^4.2.0",
         "chai-as-promised": "^7.1.1",
         "fancy-log": "^1.3.3",
         "gulp": "^4.0.2",
-        "mocha": "^7.0.0",
-        "nyc": "^15.0.0",
-        "rewire": "^4.0.1",
-        "sinon": "^8.1.0",
-        "sinon-chai": "^3.4.0"
+        "mocha": "^7.1.2",
+        "nyc": "^15.0.1",
+        "rewire": "^5.0.0",
+        "sinon": "^9.0.2",
+        "sinon-chai": "^3.5.0"
     },
     "dependencies": {
         "@awspilot/dynamodb": "^2.0.0",
-        "@vamship/arg-utils": "^2.4.6",
-        "@vamship/error-types": "^1.7.8",
-        "aws-sdk": "^2.606.0",
+        "@vamship/arg-utils": "^2.4.7",
+        "@vamship/error-types": "^1.7.9",
+        "aws-sdk": "^2.672.0",
         "bluebird": "^3.7.2",
         "selective-copy": "^0.2.0",
         "shortid": "^2.2.15"
     },
     "peerDependencies": {
-        "@vamship/logger": "^4.2.6"
+        "@vamship/logger": "^4.2.7"
     },
     "repository": {
         "type": "git",
