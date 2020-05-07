@@ -11,12 +11,12 @@ const _rewire = require('rewire');
 const {
     testValues: _testValues,
     SuperSpyBuilder,
-    ObjectMock
+    ObjectMock,
 } = require('@vamship/test-utils');
 const { ArgError } = require('@vamship/error-types').args;
 const {
     DuplicateRecordError,
-    ConcurrencyControlError
+    ConcurrencyControlError,
 } = require('@vamship/error-types').data;
 
 const Entity = require('../../src/entity');
@@ -30,33 +30,33 @@ describe('SimpleEntity', () => {
 
     function _createInputs(entity) {
         const keys = {
-            accountId: _testValues.getString('accountId')
+            accountId: _testValues.getString('accountId'),
         };
         if (entity instanceof RangeKeyEntity) {
             keys.entityId = _testValues.getString('entityId');
         }
         const updateProps = {
             prop1: _testValues.getString('prop1'),
-            prop2: _testValues.getString('prop2')
+            prop2: _testValues.getString('prop2'),
         };
         const deleteProps = {
             prop3: _testValues.getString('prop3'),
-            prop4: _testValues.getString('prop4')
+            prop4: _testValues.getString('prop4'),
         };
         const version = _testValues.getString('version');
         const props = {
             foo: _testValues.getTimestamp(),
             bar: _testValues.getNumber(),
             baz: {
-                chaz: _testValues.getString('chaz')
-            }
+                chaz: _testValues.getString('chaz'),
+            },
         };
         entity._updateCopierResults = {
-            prop1: updateProps.prop1
+            prop1: updateProps.prop1,
         };
         entity._deleteCopierResults = {
             prop1: updateProps.prop1,
-            prop4: updateProps.prop4
+            prop4: updateProps.prop4,
         };
 
         return { keys, props, updateProps, deleteProps, version };
@@ -119,7 +119,7 @@ describe('SimpleEntity', () => {
         'warn',
         'error',
         'fatal',
-        'silent'
+        'silent',
     ];
 
     let _superSpy = null;
@@ -145,15 +145,15 @@ describe('SimpleEntity', () => {
 
         const resumeToken = {};
         const converter = new ObjectMock().addMock('input', {
-            M: resumeToken
+            M: resumeToken,
         });
 
         _awsSdkMock = {
             _resumeToken: resumeToken,
             _converter: converter,
             DynamoDB: {
-                Converter: converter.instance
-            }
+                Converter: converter.instance,
+            },
         };
 
         const loggerMock = new ObjectMock().addMock(
@@ -168,15 +168,15 @@ describe('SimpleEntity', () => {
             .stub()
             .returns(loggerMock.__loggerInstance);
 
-        const initParamsFake = function(keys, action, audit) {
+        const initParamsFake = function (keys, action, audit) {
             return {
                 username: _superSpy._username,
                 logger: loggerMock.__loggerInstance,
                 hashKey: keys.accountId,
-                rangeKey: keys.entityId
+                rangeKey: keys.entityId,
             };
         };
-        const initClientFake = function() {
+        const initClientFake = function () {
             return _dynamoDbMock.instance;
         };
 
@@ -333,7 +333,7 @@ describe('SimpleEntity', () => {
             const insertMethod = _dynamoDbMock.mocks.insert;
             const { keys, props } = _createInputs(entity);
             const audit = {
-                username: _testValues.getString('username')
+                username: _testValues.getString('username'),
             };
 
             // Note: Even though we are passing in an audit object here, the
@@ -376,9 +376,7 @@ describe('SimpleEntity', () => {
             const error = new Error(message);
             callback(error);
 
-            expect(ret)
-                .to.be.rejectedWith(Error, message)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(Error, message).and.notify(done);
         });
 
         it('should resolve the promise if the insert operation succeeds', (done) => {
@@ -506,9 +504,7 @@ describe('SimpleEntity', () => {
             const error = new Error(message);
             callback(error);
 
-            expect(ret)
-                .to.be.rejectedWith(Error, message)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(Error, message).and.notify(done);
         });
 
         it('should resolve to an empty object if the lookup operation yields non-active record', (done) => {
@@ -633,7 +629,7 @@ describe('SimpleEntity', () => {
             expect(inputMethod.stub).to.have.been.calledOnce;
             expect(inputMethod.stub.args[0][0]).to.deep.equal({
                 accountId: keys.accountId,
-                entityId: keys.entityId
+                entityId: keys.entityId,
             });
 
             expect(resumeClause.stub).to.have.been.calledOnce;
@@ -734,9 +730,7 @@ describe('SimpleEntity', () => {
             const error = new Error(message);
             callback(error);
 
-            expect(ret)
-                .to.be.rejectedWith(Error, message)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(Error, message).and.notify(done);
         });
 
         it('should resolve the promise if the list operation succeeds', (done) => {
@@ -925,7 +919,7 @@ describe('SimpleEntity', () => {
             const [
                 deleteCopierInputs,
                 fieldsToUpdate,
-                transform
+                transform,
             ] = deleteCopyMethod.stub.args[0];
             expect(deleteCopierInputs).to.deep.equal(deleteProps);
             expect(fieldsToUpdate).to.equal(updateCopierResults);
@@ -969,7 +963,7 @@ describe('SimpleEntity', () => {
                     expect(actualResponse).to.deep.equal({
                         keys,
                         properties: [],
-                        __version: version
+                        __version: version,
                     });
                 })
                 .then(done, done);
@@ -1042,9 +1036,7 @@ describe('SimpleEntity', () => {
             const error = new Error(message);
             callback(error);
 
-            expect(ret)
-                .to.be.rejectedWith(Error, message)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(Error, message).and.notify(done);
         });
 
         it('should resolve the promise if the update operation succeeds', (done) => {
@@ -1055,7 +1047,7 @@ describe('SimpleEntity', () => {
             const updateMethod = _dynamoDbMock.mocks.update;
             const expectedResponse = {
                 keys,
-                properties: ['prop1', 'prop4']
+                properties: ['prop1', 'prop4'],
             };
 
             const ret = entity.update(keys, updateProps, deleteProps, version);
@@ -1234,9 +1226,7 @@ describe('SimpleEntity', () => {
             const error = new Error(message);
             callback(error);
 
-            expect(ret)
-                .to.be.rejectedWith(Error, message)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(Error, message).and.notify(done);
         });
 
         it('should resolve the promise if the delete operation succeeds', (done) => {

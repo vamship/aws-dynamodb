@@ -34,7 +34,7 @@ const builders = [
     { build: taskBuilders.lint, options: { watch: true } },
     { build: taskBuilders.build, options: { watch: true } },
     { build: taskBuilders.test, options: { testType: 'unit', watch: true } },
-    { build: taskBuilders.test, options: { testType: 'api', watch: true } }
+    { build: taskBuilders.test, options: { testType: 'api', watch: true } },
 ];
 
 const tasks = builders

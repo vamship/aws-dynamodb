@@ -13,5 +13,5 @@ module.exports = {
     /**
      * Simple entity implementation with some assumptions.
      */
-    SimpleEntity: require('./simple-entity')
+    SimpleEntity: require('./simple-entity'),
 };

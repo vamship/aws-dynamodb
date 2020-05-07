@@ -19,7 +19,7 @@ describe('Entity', () => {
     function _createOptions(options) {
         return Object.assign(
             {
-                logger: _loggerMock.__loggerInstance
+                logger: _loggerMock.__loggerInstance,
             },
             options
         );
@@ -32,13 +32,13 @@ describe('Entity', () => {
 
     function _createInputs(entity) {
         const keys = {
-            accountId: _testValues.getString('accountId')
+            accountId: _testValues.getString('accountId'),
         };
         if (entity instanceof RangeKeyEntity) {
             keys.entityId = _testValues.getString('entityId');
         }
         const audit = {
-            username: _testValues.getString('username')
+            username: _testValues.getString('username'),
         };
         const operation = _testValues.getString('operation');
 
@@ -85,7 +85,7 @@ describe('Entity', () => {
         'warn',
         'error',
         'fatal',
-        'silent'
+        'silent',
     ];
     let _loggerMock = null;
     let _awsSdkMock = null;
@@ -133,7 +133,7 @@ describe('Entity', () => {
                 logger,
                 awsRegion,
                 username,
-                awsCredentials
+                awsCredentials,
             };
             const entity = new Entity(options);
 
@@ -293,7 +293,7 @@ describe('Entity', () => {
         it('should resolve the promise if the query promise is fulfilled', (done) => {
             const entity = _createEntity(HashKeyEntity);
             const expectedResult = {
-                prop1: _testValues.getString('prop1')
+                prop1: _testValues.getString('prop1'),
             };
             const query = _sinon.stub().resolves(expectedResult);
 
@@ -319,9 +319,7 @@ describe('Entity', () => {
             const logger = _loggerMock.__loggerInstance;
             const ret = entity._execQuery(query, logger);
 
-            expect(ret)
-                .to.be.rejectedWith(error)
-                .and.notify(done);
+            expect(ret).to.be.rejectedWith(error).and.notify(done);
         });
     });
 
@@ -349,7 +347,7 @@ describe('Entity', () => {
                 const wrapper = () => {
                     const entity = _createEntity(HashKeyEntity);
                     const keys = {
-                        accountId: hashKey
+                        accountId: hashKey,
                     };
                     return entity._initParams(keys);
                 };
@@ -368,7 +366,7 @@ describe('Entity', () => {
                     const entity = _createEntity(RangeKeyEntity);
                     const keys = {
                         accountId: _testValues.getString('hashKey'),
-                        entityId: rangeKey
+                        entityId: rangeKey,
                     };
                     return entity._initParams(keys);
                 };
@@ -395,7 +393,7 @@ describe('Entity', () => {
                 hashKey,
                 rangeKey,
                 username: audit.username,
-                operation
+                operation,
             });
 
             expect(ret).to.be.an('object');
@@ -479,7 +477,7 @@ describe('Entity', () => {
 
             inputs.forEach((audit) => {
                 const entity = _createEntity(HashKeyEntity, {
-                    username: defaultUsername
+                    username: defaultUsername,
                 });
                 const { keys, operation } = _createInputs(entity);
                 const { username } = entity._initParams(keys, operation, audit);
@@ -494,11 +492,11 @@ describe('Entity', () => {
 
             inputs.forEach((input) => {
                 const entity = _createEntity(HashKeyEntity, {
-                    username: defaultUsername
+                    username: defaultUsername,
                 });
                 const { keys, operation } = _createInputs(entity);
                 const audit = {
-                    username: input
+                    username: input,
                 };
                 const { username } = entity._initParams(keys, operation, audit);
 
@@ -513,7 +511,7 @@ describe('Entity', () => {
             const awsCredentials = {};
             const entity = _createEntity(RangeKeyEntity, {
                 awsRegion,
-                awsCredentials
+                awsCredentials,
             });
             const awsDynamoDbCtor = _awsSdkMock.mocks.DynamoDB;
 
@@ -526,7 +524,7 @@ describe('Entity', () => {
             expect(awsDynamoDbCtor.stub).to.have.been.calledWithNew;
             expect(awsDynamoDbCtor.stub.args[0][0]).to.deep.equal({
                 region: awsRegion,
-                credentials: awsCredentials
+                credentials: awsCredentials,
             });
             expect(_dynamoDbMock.ctor).to.have.been.calledOnce;
             expect(_dynamoDbMock.ctor).to.have.been.calledWith(

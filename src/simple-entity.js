@@ -6,7 +6,7 @@ const _shortId = require('shortid');
 const { argValidator: _argValidator } = require('@vamship/arg-utils');
 const {
     DuplicateRecordError,
-    ConcurrencyControlError
+    ConcurrencyControlError,
 } = require('@vamship/error-types').data;
 const _dynamoDb = require('@awspilot/dynamodb');
 
@@ -81,7 +81,7 @@ class SimpleEntity extends Entity {
             __createdBy: username,
             __createDate: Date.now(),
             __updatedBy: username,
-            __updateDate: Date.now()
+            __updateDate: Date.now(),
         });
 
         logger.trace('Inserting entity record');
@@ -180,7 +180,7 @@ class SimpleEntity extends Entity {
             logger.trace('Adding resume token');
             const resumeToken = _awsSdk.DynamoDB.Converter.input({
                 [this.hashKeyName]: hashKey,
-                [this.rangeKeyName]: rangeKey
+                [this.rangeKeyName]: rangeKey,
             }).M;
             client = client.resume(resumeToken);
         }
@@ -275,7 +275,7 @@ class SimpleEntity extends Entity {
                     return {
                         keys,
                         properties,
-                        __version: version
+                        __version: version,
                     };
                 },
                 (error) => {
@@ -293,7 +293,7 @@ class SimpleEntity extends Entity {
                 return {
                     keys,
                     properties,
-                    __version: version
+                    __version: version,
                 };
             });
         }

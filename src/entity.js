@@ -15,7 +15,7 @@ const LOG_METHODS = [
     'error',
     'fatal',
     'silent',
-    'child'
+    'child',
 ];
 
 const DEFAULT_COPIER = new SelectiveCopy([]);
@@ -163,7 +163,7 @@ class Entity {
             awsCredentials = undefined;
         }
         this.__logger = logger.child({
-            entity: this.tableName
+            entity: this.tableName,
         });
         this._username = username;
         this._awsRegion = awsRegion;
@@ -298,14 +298,14 @@ class Entity {
             operation,
             username,
             hashKey,
-            rangeKey
+            rangeKey,
         });
 
         return {
             hashKey,
             rangeKey,
             username,
-            logger
+            logger,
         };
     }
 
@@ -325,7 +325,7 @@ class Entity {
         let client = _dynamoDb(
             new _awsSdk.DynamoDB({
                 region: this._awsRegion,
-                credentials: this._awsCredentials
+                credentials: this._awsCredentials,
             })
         ).table(this.tableName);
         if (typeof hashKey !== 'undefined') {
@@ -361,7 +361,7 @@ class Entity {
         return query().then(
             (results) => {
                 logger.info('Query execution completed', {
-                    duration: Date.now() - startTime
+                    duration: Date.now() - startTime,
                 });
                 return results;
             },
@@ -370,7 +370,7 @@ class Entity {
                 logger.error('Error executing query', {
                     code,
                     status,
-                    duration: Date.now() - startTime
+                    duration: Date.now() - startTime,
                 });
                 logger.trace(error);
                 throw error;

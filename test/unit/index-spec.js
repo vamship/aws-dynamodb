@@ -11,7 +11,7 @@ const Entity = require('../../src/entity');
 const SimpleEntity = require('../../src/simple-entity');
 let _index = null;
 
-describe('index', function() {
+describe('index', function () {
     beforeEach(() => {
         _index = _rewire('../../src/index');
     });
