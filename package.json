@@ -1,6 +1,6 @@
 {
     "name": "@vamship/aws-dynamodb",
-    "version": "1.4.11",
+    "version": "1.4.12",
     "description": "Library that provides easy abstractions to perform common operations on AWS DynamoDB",
     "main": "src/index.js",
     "scripts": {
