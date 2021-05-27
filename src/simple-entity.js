@@ -4,10 +4,8 @@ const Promise = require('bluebird').Promise;
 const _awsSdk = require('aws-sdk');
 const _shortId = require('shortid');
 const { argValidator: _argValidator } = require('@vamship/arg-utils');
-const {
-    DuplicateRecordError,
-    ConcurrencyControlError,
-} = require('@vamship/error-types').data;
+const { DuplicateRecordError, ConcurrencyControlError } =
+    require('@vamship/error-types').data;
 const _dynamoDb = require('@awspilot/dynamodb');
 
 const Entity = require('./entity');

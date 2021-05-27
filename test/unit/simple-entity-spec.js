@@ -14,10 +14,8 @@ const {
     ObjectMock,
 } = require('@vamship/test-utils');
 const { ArgError } = require('@vamship/error-types').args;
-const {
-    DuplicateRecordError,
-    ConcurrencyControlError,
-} = require('@vamship/error-types').data;
+const { DuplicateRecordError, ConcurrencyControlError } =
+    require('@vamship/error-types').data;
 
 const Entity = require('../../src/entity');
 const SimpleEntity = _rewire('../../src/simple-entity');
@@ -801,9 +799,8 @@ describe('SimpleEntity', () => {
             inputs.forEach((version) => {
                 const wrapper = () => {
                     const entity = _createEntity(HashKeyEntity);
-                    const { keys, updateProps, deleteProps } = _createInputs(
-                        entity
-                    );
+                    const { keys, updateProps, deleteProps } =
+                        _createInputs(entity);
                     entity.update(keys, updateProps, deleteProps, version);
                 };
                 expect(wrapper).to.throw(ArgError, message);
@@ -812,9 +809,8 @@ describe('SimpleEntity', () => {
 
         it("should initialize parameters by using the super's _initParams() method", () => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
             const audit = { username: _testValues.getString('username') };
             const initParamsMethod = _superSpy.mocks._initParams;
 
@@ -868,9 +864,8 @@ describe('SimpleEntity', () => {
 
         it('should apply checks for active record and optimistic concurrency verification', () => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
 
             const ifClause = _dynamoDbMock.mocks.if;
             const eqClause = _dynamoDbMock.mocks.eq;
@@ -898,9 +893,8 @@ describe('SimpleEntity', () => {
 
         it('should invoke the update and delete copiers to copy update and delete fields', () => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
             const updateCopierResults = entity._updateCopierResults;
 
             const updateCopyMethod = entity.updateCopierMock.mocks.copy;
@@ -916,11 +910,8 @@ describe('SimpleEntity', () => {
             expect(updateCopierInputs).to.deep.equal(updateProps);
 
             expect(deleteCopyMethod.stub).to.have.been.calledOnce;
-            const [
-                deleteCopierInputs,
-                fieldsToUpdate,
-                transform,
-            ] = deleteCopyMethod.stub.args[0];
+            const [deleteCopierInputs, fieldsToUpdate, transform] =
+                deleteCopyMethod.stub.args[0];
             expect(deleteCopierInputs).to.deep.equal(deleteProps);
             expect(fieldsToUpdate).to.equal(updateCopierResults);
             expect(transform).to.be.a('function');
@@ -930,9 +921,8 @@ describe('SimpleEntity', () => {
 
         it('should return a promise when invoked', () => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
 
             const ret = entity.update(keys, updateProps, deleteProps, version);
 
@@ -942,9 +932,8 @@ describe('SimpleEntity', () => {
 
         it('should complete with empty updated props if there are no update/delete props', (done) => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
             entity._updateCopierResults = {};
             entity._deleteCopierResults = {};
 
@@ -971,9 +960,8 @@ describe('SimpleEntity', () => {
 
         it('should invoke the update method with the correct conditions and payload', () => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
 
             const startTime = Date.now();
             const updateMethod = _dynamoDbMock.mocks.update;
@@ -1004,9 +992,8 @@ describe('SimpleEntity', () => {
 
         it('should reject the promise with a ConcurrencyControlError if conditional check fails', (done) => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
 
             const updateMethod = _dynamoDbMock.mocks.update;
             const ret = entity.update(keys, updateProps, deleteProps, version);
@@ -1024,9 +1011,8 @@ describe('SimpleEntity', () => {
 
         it('should reject the promise if the update operation fails', (done) => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
             const updateMethod = _dynamoDbMock.mocks.update;
             const message = 'something went wrong';
 
@@ -1041,9 +1027,8 @@ describe('SimpleEntity', () => {
 
         it('should resolve the promise if the update operation succeeds', (done) => {
             const entity = _createEntity(RangeKeyEntity);
-            const { keys, updateProps, deleteProps, version } = _createInputs(
-                entity
-            );
+            const { keys, updateProps, deleteProps, version } =
+                _createInputs(entity);
             const updateMethod = _dynamoDbMock.mocks.update;
             const expectedResponse = {
                 keys,
