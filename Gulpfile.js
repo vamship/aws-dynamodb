@@ -26,7 +26,9 @@ const builders = [
     { build: taskBuilders.package },
     { build: taskBuilders.package, options: { types: true } },
     { build: taskBuilders.publish },
+    { build: taskBuilders.publish, options: { latestOnly: true } },
     { build: taskBuilders.publish, options: { types: true } },
+    { build: taskBuilders.package, options: { types: true, latestOnly: true } },
 
     { build: taskBuilders.test, options: { testType: 'unit' } },
     { build: taskBuilders.test, options: { testType: 'api' } },
